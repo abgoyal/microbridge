@@ -11,7 +11,7 @@ static usb_endpoint ep_record[3];
 
 // static uint8_t adb_transferBuf[256];
 
-int ad_writeEmptyMessage(adb_usbHandle * handle, uint32_t command, uint32_t arg0, uint32_t arg1)
+int adb_writeEmptyMessage(adb_usbHandle * handle, uint32_t command, uint32_t arg0, uint32_t arg1)
 {
 	adb_message message;
 
@@ -22,7 +22,7 @@ int ad_writeEmptyMessage(adb_usbHandle * handle, uint32_t command, uint32_t arg0
 	message.data_check = 0;
 	message.magic = command ^ 0xffffffff;
 
-	return usb_outTransfer(handle->address, 1, sizeof(adb_message), &message, USB_NAK_LIMIT);
+	return usb_bulkWrite(&(handle->device), sizeof(adb_message), &message);
 }
 
 int adb_writeMessage(adb_usbHandle * handle, uint32_t command, uint32_t arg0, uint32_t arg1, uint32_t length, uint8_t * data)
@@ -46,20 +46,10 @@ int adb_writeMessage(adb_usbHandle * handle, uint32_t command, uint32_t arg0, ui
 	message.data_check = sum;
 	message.magic = command ^ 0xffffffff;
 
-	/*
-	// Copy message struct to the head of the USB packet.
-	memcpy(adb_transferBuf, &message, sizeof(adb_message));
-
-	// Append payload data
-	memcpy(adb_transferBuf + sizeof(adb_message), data, length);
-	*/
-
-	// rcode = usb_outTransfer(handle->address, 1, totalLength, adb_transferBuf, USB_NAK_LIMIT);
-
-	rcode = usb_outTransfer(handle->address, 1, sizeof(adb_message), &message, USB_NAK_LIMIT);
+	rcode = usb_bulkWrite(&(handle->device), sizeof(adb_message), &message);
 	if (rcode) return rcode;
 
-	rcode = usb_outTransfer(handle->address, 1, length, data, USB_NAK_LIMIT);
+	rcode = usb_bulkWrite(&(handle->device), length, data);
 
 	return rcode;
 
@@ -79,13 +69,13 @@ int adb_poll(adb_usbHandle * handle)
 	adb_message message;
 
 	// Poll a packet from the USB
-	rcode = usb_bulkRead(handle->address, handle->inputEndPoint, ADB_USB_PACKETSIZE, &message, &bytesRead);
+	bytesRead = usb_bulkRead(&(handle->device), ADB_USB_PACKETSIZE, &message);
 
 	// Check if the USB in transfer was successful.
-	if (rcode) return -1;
+	if (bytesRead<0) return -1;
 
 	// Check if the received number of bytes matches our expected 24 bytes of ADB message header.
-	if (bytesRead!=sizeof(adb_message)) return -2;
+	if (bytesRead != sizeof(adb_message)) return -2;
 
 	uint32_t bytesLeft = message.data_length;
 	uint8_t * bufPtr = adb_buf;
@@ -94,8 +84,8 @@ int adb_poll(adb_usbHandle * handle)
 		int len = bytesLeft < ADB_USB_PACKETSIZE ? bytesLeft : ADB_USB_PACKETSIZE;
 
 		// Read payload
-		rcode = usb_bulkRead(handle->address, handle->inputEndPoint, len, bufPtr, &bytesRead);
-		if (rcode) return -3;
+		bytesRead = usb_bulkRead(&(handle->device), len, bufPtr);
+		if (bytesRead < 0) return -3;
 
 		bytesLeft -= bytesRead;
 		bufPtr += bytesRead;
@@ -141,7 +131,7 @@ int adb_poll(adb_usbHandle * handle)
 		OCR3C = 3000 + (value-50) * 30;
 		OCR3B = 3000 + (value-50) * 30;
 
-		ad_writeEmptyMessage(handle, A_OKAY, message.arg1, message.arg0);
+		adb_writeEmptyMessage(handle, A_OKAY, message.arg1, message.arg0);
 
 		break;
 	default:
@@ -157,7 +147,7 @@ int adb_poll(adb_usbHandle * handle)
  * Helper function for usb_isAdbDevice to check whether an interface is a valid ADB interface.
  * @param interface interface descriptor struct.
  */
-static boolean usb_isAdbInterface(USB_INTERFACE_DESCRIPTOR * interface)
+static boolean usb_isAdbInterface(usb_interfaceDescriptor * interface)
 {
 
 	// Check if the interface has exactly two endpoints.
@@ -185,8 +175,16 @@ boolean adb_isAdbDevice(uint8_t address, uint8_t configuration, adb_usbHandle * 
 	uint8_t err = 0;
 	uint8_t buf[MAX_BUF];
 
+	usb_bulkDevice device;
+	device.address = address;
+	device.control.address = 0;
+	device.control.sendToggle = bmSNDTOG0;
+	device.control.receiveToggle = bmRCVTOG0;
+
+	avr_serialPrintf("checking address=%d\n", address);
+
 	// Read the length of the configuration descriptor.
-	err = usb_getConfigurationDescriptor(address, 0, 4, configuration, buf, USB_NAK_LIMIT);
+	err = usb_getConfigurationDescriptor(&device, 4, configuration, buf, USB_NAK_LIMIT);
 	if (err) return false;
 
 	// Clamp to the length to MAX_BUF.
@@ -194,16 +192,16 @@ boolean adb_isAdbDevice(uint8_t address, uint8_t configuration, adb_usbHandle * 
 	if (length>MAX_BUF) length = MAX_BUF;
 
 	// Read the full configuration descriptor.
-	err = usb_getConfigurationDescriptor(address, 0, length, configuration, buf, USB_NAK_LIMIT);
+	err = usb_getConfigurationDescriptor(&device, length, configuration, buf, USB_NAK_LIMIT);
 	if (err) return false;
 
 	uint16_t pos = 0;
 	uint8_t descriptorLength;
 	uint8_t descriptorType;
 
-	usb_ConfigurationDescriptor * config;
-	USB_INTERFACE_DESCRIPTOR * interface;
-	usb_EndpointDescriptor * endpoint;
+	usb_configurationDescriptor * config;
+	usb_interfaceDescriptor * interface;
+	usb_endpointDescriptor * endpoint;
 
 	while (pos < length)
 	{
@@ -213,11 +211,11 @@ boolean adb_isAdbDevice(uint8_t address, uint8_t configuration, adb_usbHandle * 
 		switch (descriptorType)
 		{
 		case (USB_DESCRIPTOR_CONFIGURATION):
-			config = (usb_ConfigurationDescriptor *)(buf + pos);
+			config = (usb_configurationDescriptor *)(buf + pos);
 //			avr_serialPrintf("CONFIG: %d\n", config->bConfigurationValue);
 			break;
 		case (USB_DESCRIPTOR_INTERFACE):
-			interface = (USB_INTERFACE_DESCRIPTOR *)(buf + pos);
+			interface = (usb_interfaceDescriptor *)(buf + pos);
 //			avr_serialPrintf("INTERFACE class=%d subclass=%d protocol=%d enpoints=%d, adb=%s\n", interface->bInterfaceClass, interface->bInterfaceSubClass, interface->bInterfaceProtocol, interface->bNumEndpoints, usb_isAdbInterface(interface) ? "true" : "false");
 //			avr_serialPrintf("\talternate=%d\n", interface->bAlternateSetting);
 
@@ -232,7 +230,7 @@ boolean adb_isAdbDevice(uint8_t address, uint8_t configuration, adb_usbHandle * 
 			}
 			break;
 		case (USB_DESCRIPTOR_ENDPOINT):
-			endpoint = (usb_EndpointDescriptor *)(buf + pos);
+			endpoint = (usb_endpointDescriptor *)(buf + pos);
 //			avr_serialPrintf("ENDPOINT %d (%s %d)\n", endpoint->bEndpointAddress, endpoint->bEndpointAddress & 0x80 ? "in" : "out", endpoint->bEndpointAddress & 0x7f);
 //			avr_serialPrintf("\t max packet size=0x%02x, attributesibutes=0x%02x\n", endpoint->wMaxPacketSize, endpoint->bmattributesibutes);
 
@@ -263,16 +261,16 @@ int adb_initUsb(adb_usbHandle * handle)
 	// Output endpoint.
     ep_record[1].address = handle->outputEndPointAddress;
     ep_record[1].attributes = USB_TRANSFER_TYPE_BULK;
-    ep_record[1].MaxPktSize = ADB_USB_PACKETSIZE;
-    ep_record[1].sndToggle = bmSNDTOG0;
-    ep_record[1].rcvToggle = bmRCVTOG0;
+    ep_record[1].maxPacketSize = ADB_USB_PACKETSIZE;
+    ep_record[1].sendToggle = bmSNDTOG0;
+    ep_record[1].receiveToggle = bmRCVTOG0;
 
     // Input endpoint.
     ep_record[2].address = handle->inputEndPointAddress;
     ep_record[2].attributes = USB_TRANSFER_TYPE_BULK;
-    ep_record[2].MaxPktSize = ADB_USB_PACKETSIZE;
-    ep_record[2].sndToggle = bmSNDTOG0;
-    ep_record[2].rcvToggle = bmRCVTOG0;
+    ep_record[2].maxPacketSize = ADB_USB_PACKETSIZE;
+    ep_record[2].sendToggle = bmSNDTOG0;
+    ep_record[2].receiveToggle = bmRCVTOG0;
 
     // Copy endpoint structs to the adb handle record.
     handle->controlEndPoint = &(ep_record[0]);
@@ -281,15 +279,23 @@ int adb_initUsb(adb_usbHandle * handle)
 
     usb_setDevTableEntry(handle->address, ep_record);
 
+    // Configure bulk device
+    handle->device.address = handle->address;
+    handle->device.control = *(handle->controlEndPoint);
+    handle->device.in = *(handle->inputEndPoint);
+    handle->device.out = *(handle->outputEndPoint);
+
     uint8_t rcode;
 
     avr_serialPrintf("Configuring  ... \n");
 
     // Configure the USB lib to use the device address, configuration, and endpoint settings specified in the handle.
-    rcode = usb_setConfiguration(handle->address, handle->controlEndPoint->address, handle->configuration, USB_NAK_LIMIT);
+    // rcode = usb_setConfiguration(handle->address, handle->controlEndPoint->address, handle->configuration, USB_NAK_LIMIT);
+    // if (rcode) return rcode;
+    rcode = usb_setConfiguration(&(handle->device), handle->configuration, USB_NAK_LIMIT);
     if (rcode) return rcode;
 
-    rcode = usb_setConfiguration(handle->address, handle->controlEndPoint->address, handle->configuration, USB_NAK_LIMIT);
+    rcode = usb_setConfiguration(&(handle->device), handle->configuration, USB_NAK_LIMIT);
 
     return rcode;
 }
@@ -301,12 +307,13 @@ int adb_initUsb(adb_usbHandle * handle)
  */
 int adb_printDeviceInfo(uint8_t address)
 {
+	/*
 	int rcode;
     char buf[128];
 
     // Read the device descriptor
-	usb_DeviceDescriptor deviceDescriptor;
-    rcode = usb_getDeviceDescriptor(address, 0x0 /* control endpoint */, sizeof(deviceDescriptor) , &deviceDescriptor, USB_NAK_LIMIT);
+	usb_deviceDescriptor deviceDescriptor;
+    rcode = usb_getDeviceDescriptor(address, 0x0 , sizeof(deviceDescriptor) , &deviceDescriptor, USB_NAK_LIMIT);
     if (rcode) return rcode;
 
     avr_serialPrintf("Vendor ID: %x\n", deviceDescriptor.idVendor);
@@ -322,6 +329,7 @@ int adb_printDeviceInfo(uint8_t address)
     avr_serialPrintf("Product: %s\n", buf);
     usb_getString(address, deviceDescriptor.iSerialNumber, 128, buf);
     avr_serialPrintf("Serial number: %s\n", buf);
+    */
 
     return 0;
 }

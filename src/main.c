@@ -54,7 +54,7 @@ int main()
  				adb_initUsb(&handle);
 
  				avr_serialPrint("Device info ...\n");
- 	 			adb_printDeviceInfo(1);
+ 	 			adb_printDeviceInfo(handle.address);
 
  			}
 

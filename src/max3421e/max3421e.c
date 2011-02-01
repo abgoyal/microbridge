@@ -34,15 +34,15 @@ boolean max3421e_reset(void)
 	uint8_t tmp = 0;
 
 	//Chip reset. This stops the oscillator
-	max3421e_write(USBCTL, bmCHIPRES);
+	max3421e_write(MAX_REG_USBCTL, bmCHIPRES);
 
 	//Remove the reset
-	max3421e_write(USBCTL, 0x00);
+	max3421e_write(MAX_REG_USBCTL, 0x00);
 
 	avr_delay(10);
 
 	// Wait until the PLL is stable
-	while (!(max3421e_read(USBIRQ) & bmOSCOKIRQ))
+	while (!(max3421e_read(MAX_REG_USBIRQ) & bmOSCOKIRQ))
 	{
 		// Timeout after 256 attempts.
 		tmp++;
@@ -60,26 +60,25 @@ boolean max3421e_reset(void)
 void max3421e_powerOn(void)
 {
 	// Configure full-duplex SPI, interrupt pulse.
-	max3421e_write(PINCTL, (bmFDUPSPI + bmINTLEVEL + bmGPXB)); //Full-duplex SPI, level interrupt, GPX
+	max3421e_write(MAX_REG_PINCTL, (bmFDUPSPI + bmINTLEVEL + bmGPXB)); //Full-duplex SPI, level interrupt, GPX
 
 	// Stop/start the oscillator
 	if (max3421e_reset() == false)
 		avr_serialPrintf("Error: OSCOKIRQ failed to assert\n");
 
 	// configure host operation
-	max3421e_write(MODE, bmDPPULLDN | bmDMPULLDN | bmHOST | bmSEPIRQ ); // set pull-downs, Host, Separate GPIN IRQ on GPX
-	max3421e_write(HIEN, bmCONDETIE | bmFRAMEIE ); //connection detection
+	max3421e_write(MAX_REG_MODE, bmDPPULLDN | bmDMPULLDN | bmHOST | bmSEPIRQ ); // set pull-downs, Host, Separate GPIN IRQ on GPX
+	max3421e_write(MAX_REG_HIEN, bmCONDETIE | bmFRAMEIE ); //connection detection
 
 	// Check if device is connected.
-	max3421e_write(HCTL, bmSAMPLEBUS ); // sample USB bus
-	while (!(max3421e_read(HCTL) & bmSAMPLEBUS))
-		; //wait for sample operation to finish
+	max3421e_write(MAX_REG_HCTL, bmSAMPLEBUS ); // sample USB bus
+	while (!(max3421e_read(MAX_REG_HCTL) & bmSAMPLEBUS)); //wait for sample operation to finish
 
 	max3421e_busprobe(); //check if anything is connected
-	max3421e_write(HIRQ, bmCONDETIRQ ); //clear connection detect interrupt
+	max3421e_write(MAX_REG_HIRQ, bmCONDETIRQ ); //clear connection detect interrupt
 
 	//enable interrupt pin
-	max3421e_write(CPUCTL, 0x01);
+	max3421e_write(MAX_REG_CPUCTL, 0x01);
 }
 
 /**
@@ -214,30 +213,31 @@ uint8_t max3421e_getVbusState()
 void max3421e_busprobe(void)
 {
 	uint8_t bus_sample;
-	bus_sample = max3421e_read(HRSL); //Get J,K status
+	bus_sample = max3421e_read(MAX_REG_HRSL); //Get J,K status
 	bus_sample &= (bmJSTATUS | bmKSTATUS); //zero the rest of the uint8_t
 
 	switch (bus_sample)
-	{ //start full-speed or low-speed host
+	{
+	//start full-speed or low-speed host
 	case (bmJSTATUS):
-		if ((max3421e_read(MODE) & bmLOWSPEED) == 0)
+		if ((max3421e_read(MAX_REG_MODE) & bmLOWSPEED) == 0)
 		{
-			max3421e_write(MODE, MODE_FS_HOST ); //start full-speed host
+			max3421e_write(MAX_REG_MODE, MODE_FS_HOST ); //start full-speed host
 			vbusState = FSHOST;
 		} else
 		{
-			max3421e_write(MODE, MODE_LS_HOST); //start low-speed host
+			max3421e_write(MAX_REG_MODE, MODE_LS_HOST); //start low-speed host
 			vbusState = LSHOST;
 		}
 		break;
 	case (bmKSTATUS):
-		if ((max3421e_read(MODE) & bmLOWSPEED) == 0)
+		if ((max3421e_read(MAX_REG_MODE) & bmLOWSPEED) == 0)
 		{
-			max3421e_write(MODE, MODE_LS_HOST ); //start low-speed host
+			max3421e_write(MAX_REG_MODE, MODE_LS_HOST ); //start low-speed host
 			vbusState = LSHOST;
 		} else
 		{
-			max3421e_write(MODE, MODE_FS_HOST ); //start full-speed host
+			max3421e_write(MAX_REG_MODE, MODE_FS_HOST ); //start full-speed host
 			vbusState = FSHOST;
 		}
 		break;
@@ -260,10 +260,10 @@ uint8_t max3421e_poll(void)
 
 	// Check interrupt.
 	if (MAX_INT() == 0)
-		rcode = max3421e_IntHandler();
+		rcode = max3421e_interruptHandler();
 
 	if (MAX_GPX() == 0)
-		max3421e_GpxHandler();
+		max3421e_gpxInterruptHandler();
 
 	return (rcode);
 }
@@ -271,13 +271,13 @@ uint8_t max3421e_poll(void)
 /**
  * Interrupt handler.
  */
-uint8_t max3421e_IntHandler(void)
+uint8_t max3421e_interruptHandler(void)
 {
 	uint8_t interruptStatus;
 	uint8_t HIRQ_sendback = 0x00;
 
 	// Determine interrupt source.
-	interruptStatus = max3421e_read(HIRQ);
+	interruptStatus = max3421e_read(MAX_REG_HIRQ);
 
 	if (interruptStatus & bmFRAMEIRQ)
 	{
@@ -293,7 +293,7 @@ uint8_t max3421e_IntHandler(void)
 	}
 
 	// End HIRQ interrupts handling, clear serviced IRQs
-	max3421e_write(HIRQ, HIRQ_sendback);
+	max3421e_write(MAX_REG_HIRQ, HIRQ_sendback);
 
 	return (HIRQ_sendback);
 }
@@ -301,10 +301,10 @@ uint8_t max3421e_IntHandler(void)
 /**
  * GPX interrupt handler
  */
-uint8_t max3421e_GpxHandler(void)
+uint8_t max3421e_gpxInterruptHandler(void)
 {
 	//read GPIN IRQ register
-	uint8_t interruptStatus = max3421e_read(GPINIRQ);
+	uint8_t interruptStatus = max3421e_read(MAX_REG_GPINIRQ);
 
 	//    if( GPINIRQ & bmGPINIRQ7 ) {            //vbus overload
 	//        vbusPwr( OFF );                     //attempt powercycle

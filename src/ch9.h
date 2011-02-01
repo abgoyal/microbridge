@@ -78,10 +78,13 @@
 /* Protocol Selection */
 #define BOOT_PROTOCOL   0x00
 #define RPT_PROTOCOL    0x01
+
 /* HID Interface Class Code */
 #define HID_INTF                    0x03
+
 /* HID Interface Class SubClass Codes */
 #define BOOT_INTF_SUBCLASS          0x01
+
 /* HID Interface Class Protocol Codes */
 #define HID_PROTOCOL_NONE           0x00
 #define HID_PROTOCOL_KEYBOARD       0x01

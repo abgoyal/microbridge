@@ -28,6 +28,9 @@ typedef struct
 	usb_endpoint * controlEndPoint;
 	usb_endpoint * outputEndPoint;
 	usb_endpoint * inputEndPoint;
+
+	usb_bulkDevice device;
+
 } adb_usbHandle;
 
 typedef struct

@@ -26,26 +26,26 @@
  */
 enum
 {
-	RCVFIFO = 0x08,
-	SNDFIFO = 0x10,
-	SUDFIFO = 0x20,
-	RCVBC = 0x30,
-	SNDBC = 0x38,
-	USBIRQ = 0x68,
-	USBIEN = 0x70,
-	CPUCTL = 0x80,
-	USBCTL = 0x78,
-	PINCTL = 0x88,
-	REVISION = 0x90,
-	FNADDR = 0x98,
-	GPINIRQ = 0xb0,
-	HIRQ = 0xc8,
-	HIEN = 0xd0,
-	MODE = 0xd8,
-	PERADDR = 0xe0,
-	HCTL = 0xe8,
-	HXFR = 0xf0,
-	HRSL = 0xf8
+	MAX_REG_RCVFIFO = 0x08,
+	MAX_REG_SNDFIFO = 0x10,
+	MAX_REG_SUDFIFO = 0x20,
+	MAX_REG_RCVBC = 0x30,
+	MAX_REG_SNDBC = 0x38,
+	MAX_REG_USBIRQ = 0x68,
+	MAX_REG_USBIEN = 0x70,
+	MAX_REG_CPUCTL = 0x80,
+	MAX_REG_USBCTL = 0x78,
+	MAX_REG_PINCTL = 0x88,
+	MAX_REG_REVISION = 0x90,
+	MAX_REG_FNADDR = 0x98,
+	MAX_REG_GPINIRQ = 0xb0,
+	MAX_REG_HIRQ = 0xc8,
+	MAX_REG_HIEN = 0xd0,
+	MAX_REG_MODE = 0xd8,
+	MAX_REG_PERADDR = 0xe0,
+	MAX_REG_HCTL = 0xe8,
+	MAX_REG_HXFR = 0xf0,
+	MAX_REG_HRSL = 0xf8
 } max_registers;
 
 // Definitions for the ports and bitmasks required to drive the various pins.
@@ -81,7 +81,7 @@ uint8_t max3421e_getVbusState();
 
 uint8_t max3421e_poll(void);
 
-uint8_t max3421e_IntHandler(void);
-uint8_t max3421e_GpxHandler(void);
+uint8_t max3421e_interruptHandler(void);
+uint8_t max3421e_gpxInterruptHandler(void);
 
 #endif //_MAX3421E_H_
