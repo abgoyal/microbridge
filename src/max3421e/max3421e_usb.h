@@ -44,77 +44,10 @@
 #define USB_STATE_RUNNING                                   0x90
 #define USB_STATE_ERROR                                     0xa0
 
-// Device descriptor.
-typedef struct {
-	uint8_t bLength;               // Length of this descriptor.
-	uint8_t bDescriptorType;       // DEVICE descriptor type (USB_DESCRIPTOR_DEVICE).
-	unsigned int bcdUSB;        // USB Spec Release Number (BCD).
-	uint8_t bDeviceClass;          // Class code (assigned by the USB-IF). 0xFF-Vendor specific.
-	uint8_t bDeviceSubClass;       // Subclass code (assigned by the USB-IF).
-	uint8_t bDeviceProtocol;       // Protocol code (assigned by the USB-IF). 0xFF-Vendor specific.
-	uint8_t bMaxPacketSize0;       // Maximum packet size for endpoint 0.
-	unsigned int idVendor;      // Vendor ID (assigned by the USB-IF).
-	unsigned int idProduct;     // Product ID (assigned by the manufacturer).
-	unsigned int bcdDevice;      // Device release number (BCD).
-	uint8_t iManufacturer;         // Index of String Descriptor describing the manufacturer.
-	uint8_t iProduct;              // Index of String Descriptor describing the product.
-	uint8_t iSerialNumber;         // Index of String Descriptor with the device's serial number.
-	uint8_t bNumConfigurations;    // Number of possible configurations.
-} usb_deviceDescriptor;
-
-// Configuration descriptor.
-typedef struct
-{
-	uint8_t bLength;               // Length of this descriptor.
-	uint8_t bDescriptorType;       // CONFIGURATION descriptor type (USB_DESCRIPTOR_CONFIGURATION).
-	unsigned int wTotalLength;          // Total length of all descriptors for this configuration.
-	uint8_t bNumInterfaces;        // Number of interfaces in this configuration.
-	uint8_t bConfigurationValue;   // Value of this configuration (1 based).
-	uint8_t iConfiguration;        // Index of String Descriptor describing the configuration.
-	uint8_t bmAttributes;          // Configuration characteristics.
-	uint8_t bMaxPower;             // Maximum power consumed by this configuration.
-} usb_configurationDescriptor;
-
-// Interface descriptor.
-typedef struct
-{
-	uint8_t bLength;               // Length of this descriptor.
-	uint8_t bDescriptorType;       // INTERFACE descriptor type (USB_DESCRIPTOR_INTERFACE).
-	uint8_t bInterfaceNumber;      // Number of this interface (0 based).
-	uint8_t bAlternateSetting;     // Value of this alternate interface setting.
-	uint8_t bNumEndpoints;         // Number of endpoints in this interface.
-	uint8_t bInterfaceClass;       // Class code (assigned by the USB-IF).  0xFF-Vendor specific.
-	uint8_t bInterfaceSubClass;    // Subclass code (assigned by the USB-IF).
-	uint8_t bInterfaceProtocol;    // Protocol code (assigned by the USB-IF).  0xFF-Vendor specific.
-	uint8_t iInterface;            // Index of String Descriptor describing the interface.
-} usb_interfaceDescriptor;
-
-/* Endpoint descriptor structure */
-typedef struct
-{
-	uint8_t bLength;               // Length of this descriptor.
-	uint8_t bDescriptorType;       // ENDPOINT descriptor type (USB_DESCRIPTOR_ENDPOINT).
-	uint8_t bEndpointAddress;      // Endpoint address. Bit 7 indicates direction (0=OUT, 1=IN).
-	uint8_t bmAttributes;          // Endpoint transfer type.
-	unsigned int wMaxPacketSize;        // Maximum packet size.
-	uint8_t bInterval;             // Polling interval in frames.
-} usb_endpointDescriptor;
-
-// USB Setup Packet.
-typedef struct
-{
-	uint8_t bmRequestType; //   0      Bit-map of request type
-	uint8_t bRequest; //   1      Request
-	uint16_t wValue; //   2      Depends on bRequest
-	uint16_t wIndex; //   4      Depends on bRequest
-	uint16_t wLength; //   6      Depends on bRequest
-} usb_setupPacket;
-
-
 // USB Device
 typedef struct
 {
-    usb_endpoint* epinfo;      //device endpoint information
+    usb_endpoint * epinfo;      //device endpoint information
     uint8_t devclass;          //device class
 } usb_deviceRecord;
 
@@ -123,22 +56,11 @@ void usb_setUsbTaskState(uint8_t state);
 
 usb_endpoint * usb_getDevTableEntry(uint8_t addr, uint8_t ep);
 void usb_setDevTableEntry(uint8_t addr, usb_endpoint * eprecord_ptr);
-
-uint8_t usb_controlRequest(uint8_t addr, uint8_t ep, uint8_t bmReqType, uint8_t bRequest, uint8_t wValLo, uint8_t wValHi, unsigned int wInd, unsigned int nbytes, char* dataptr, unsigned int nak_limit);
-uint8_t usb_ctrlStatus(uint8_t ep, boolean direction, unsigned int nak_limit);
-uint8_t usb_ctrlData(uint8_t addr, uint8_t ep, unsigned int nbytes, char* dataptr, boolean direction, unsigned int nak_limit);
-
-uint8_t usb_inTransfer(uint8_t addr, uint8_t ep, unsigned int nbytes, char* data, unsigned int nak_limit);
-uint8_t usb_outTransfer(uint8_t addr, uint8_t ep, unsigned int nbytes, char* data, unsigned int nak_limit);
-
-int usb_dispatchPacket(uint8_t token, uint8_t ep, unsigned int nak_limit);
-
-int usb_getString(uint8_t address, uint8_t index, unsigned int length, char * str);
-
-uint8_t usb_getDeviceDescriptor(usb_bulkDevice * device, unsigned int nbytes, char* dataptr);
-uint8_t usb_getConfigurationDescriptor(usb_bulkDevice * device, unsigned int nbytes, uint8_t conf, char* dataptr, unsigned int nak_limit);
-uint8_t usb_getStringDescriptor(usb_bulkDevice * device, unsigned int nbytes, uint8_t index, unsigned int langid, char * dataptr, unsigned int nak_limit);
-uint8_t usb_setAddress(usb_bulkDevice * device, uint8_t newaddr, unsigned int nak_limit);
-uint8_t usb_setConfiguration(usb_bulkDevice * device, uint8_t conf_value, unsigned int nak_limit);
+int usb_controlRequest(usb_device * device, uint8_t requestType, uint8_t request, uint8_t valueLow, uint8_t valueHigh, uint16_t index, uint16_t length, uint8_t * data);
+int usb_getString(usb_device *device, uint8_t index, uint8_t languageId, uint16_t length, char * str);
+int usb_getConfigurationDescriptor(usb_device * device, uint8_t conf, uint16_t length, uint8_t * data);
+uint8_t usb_getStringDescriptor(usb_device * device, unsigned int nbytes, uint8_t index, unsigned int langid, char * dataptr, unsigned int nak_limit);
+int usb_setAddress(usb_device * device, uint8_t address);
+int usb_setConfiguration(usb_device * device, uint8_t configuration);
 
 #endif //_usb_h_

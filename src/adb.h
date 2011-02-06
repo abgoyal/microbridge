@@ -25,27 +25,35 @@ typedef struct
 	uint8_t inputEndPointAddress;
 	uint8_t outputEndPointAddress;
 
-	usb_endpoint * controlEndPoint;
-	usb_endpoint * outputEndPoint;
-	usb_endpoint * inputEndPoint;
-
-	usb_bulkDevice device;
+	usb_device * device;
 
 } adb_usbHandle;
 
 typedef struct
 {
-	uint32_t command;       /* command identifier constant      */
-	uint32_t arg0;          /* first argument                   */
-	uint32_t arg1;          /* second argument                  */
-	uint32_t data_length;   /* length of payload (0 is allowed) */
-	uint32_t data_check;    /* checksum of data payload         */
-	uint32_t magic;         /* command ^ 0xffffffff             */
+	// Command identifier constant
+	uint32_t command;
+
+	// First argument
+	uint32_t arg0;
+
+	// Second argument
+	uint32_t arg1;
+
+	// Payload length (0 is allowed)
+	uint32_t data_length;
+
+	// Checksum of data payload
+	uint32_t data_check;
+
+	// Command ^ 0xffffffff
+	uint32_t magic;
+
 } adb_message;
 
-boolean adb_isAdbDevice(uint8_t address, uint8_t configuration, adb_usbHandle * handle);
+boolean adb_isAdbDevice(usb_device * device, int configuration, adb_usbHandle * handle);
 int adb_initUsb(adb_usbHandle * handle);
-int adb_printDeviceInfo(uint8_t address);
+int adb_printDeviceInfo(adb_usbHandle * handle);
 int adb_writeString(adb_usbHandle * handle, uint32_t command, uint32_t arg0, uint32_t arg1, char * str);
 int adb_poll(adb_usbHandle * handle);
 

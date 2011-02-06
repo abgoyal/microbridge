@@ -38,7 +38,9 @@ int main()
  		avr_delay(10);
  	}
 
- 	while (1)
+	avr_serialPrint("Starting ... \n");
+
+	while (1)
  	{
  		max3421e_poll();
  		usb_poll();
@@ -46,16 +48,14 @@ int main()
  		if (usb_getUsbTaskState() == USB_STATE_CONFIGURING)
 		{
 
- 			avr_serialPrint("Checking for ADB device ... \n");
+ 			// avr_serialPrint("Checking for ADB device ... \n");
 
- 			if (adb_isAdbDevice(1, 0, &handle))
+ 			usb_device * device = usb_getDevice(1);
+
+ 			if (adb_isAdbDevice(device, 0, &handle))
  			{
  				avr_serialPrint("ADB device found!\n");
  				adb_initUsb(&handle);
-
- 				avr_serialPrint("Device info ...\n");
- 	 			adb_printDeviceInfo(handle.address);
-
  			}
 
  			usb_setUsbTaskState(USB_STATE_RUNNING);
@@ -64,7 +64,6 @@ int main()
 
  		if (usb_getUsbTaskState() == USB_STATE_RUNNING)
  		{
-
  			if (!connected)
  			{
  	 			uint8_t rcode;
@@ -78,7 +77,6 @@ int main()
  			}
 
  			adb_poll(&handle);
-
 
  		}
 

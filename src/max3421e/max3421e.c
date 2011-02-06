@@ -62,11 +62,11 @@ void max3421e_powerOn(void)
 	// Configure full-duplex SPI, interrupt pulse.
 	max3421e_write(MAX_REG_PINCTL, (bmFDUPSPI + bmINTLEVEL + bmGPXB)); //Full-duplex SPI, level interrupt, GPX
 
-	// Stop/start the oscillator
+	// Stop/start the oscillator.
 	if (max3421e_reset() == false)
 		avr_serialPrintf("Error: OSCOKIRQ failed to assert\n");
 
-	// configure host operation
+	// Configure host operation.
 	max3421e_write(MAX_REG_MODE, bmDPPULLDN | bmDMPULLDN | bmHOST | bmSEPIRQ ); // set pull-downs, Host, Separate GPIN IRQ on GPX
 	max3421e_write(MAX_REG_HIEN, bmCONDETIE | bmFRAMEIE ); //connection detection
 
@@ -77,7 +77,7 @@ void max3421e_powerOn(void)
 	max3421e_busprobe(); //check if anything is connected
 	max3421e_write(MAX_REG_HIRQ, bmCONDETIRQ ); //clear connection detect interrupt
 
-	//enable interrupt pin
+	// Enable interrupt pin.
 	max3421e_write(MAX_REG_CPUCTL, 0x01);
 }
 
@@ -113,7 +113,7 @@ void max3421e_write(uint8_t reg, uint8_t value)
  * @param vaues input values.
  * @return a pointer to values, incremented by the number of bytes written (values + length).
  */
-char * max3421e_writeMultiple(uint8_t reg, uint8_t count, char * values)
+uint8_t * max3421e_writeMultiple(uint8_t reg, uint8_t count, uint8_t * values)
 {
 	// Pull slave select low to indicate start of transfer.
 	MAX_SS(0);
@@ -172,7 +172,7 @@ uint8_t max3421e_read(uint8_t reg)
  * @param values target buffer.
  * @return pointer to the input buffer + count.
  */
-char * max3421e_readMultiple(uint8_t reg, uint8_t count, char * values)
+uint8_t * max3421e_readMultiple(uint8_t reg, uint8_t count, uint8_t * values)
 {
 	// Pull slave-select high to initiate transfer.
 	MAX_SS(0);

@@ -6,7 +6,7 @@ LINKERFLAGS=-mmcu=atmega1280 -Wl,-u,vfprintf -lprintf_flt
 #CFLAGS=
 #LINKERFLAGS=
 
-CFILES=main.c avr.c spi.c max3421e/max3421e.c max3421e/max3421e_usb.c adb.c
+CFILES=main.c avr.c spi.c usb.c max3421e/max3421e.c max3421e/max3421e_usb.c adb.c
 OFILES=${CFILES:.c=.o}
 TARGET=test
 

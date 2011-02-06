@@ -68,10 +68,10 @@ enum
 
 void max3421e_init();
 void max3421e_write(uint8_t reg, uint8_t val);
-char * max3421e_writeMultiple(uint8_t reg, uint8_t nuint8_ts, char * data);
+uint8_t * max3421e_writeMultiple(uint8_t reg, uint8_t count, uint8_t * values);
 void max3421e_gpioWr(uint8_t val);
 uint8_t max3421e_read(uint8_t reg);
-char * max3421e_readMultiple(uint8_t reg, uint8_t nuint8_ts, char * data);
+uint8_t * max3421e_readMultiple(uint8_t reg, uint8_t count, uint8_t * values);
 uint8_t max3421e_gpioRd(void);
 boolean max3421e_reset();
 boolean max3421e_vbusPwr(boolean action);
