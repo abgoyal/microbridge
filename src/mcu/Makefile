@@ -9,7 +9,7 @@ LINKERFLAGS=-mmcu=atmega1280 -Wl,-u,vfprintf -lprintf_flt
 
 CFILES=main.c avr.c spi.c usb.c max3421e/max3421e.c max3421e/max3421e_usb.c adb.c
 OFILES=${CFILES:.c=.o}
-TARGET=test
+TARGET=microbridge
 
 all: ${TARGET}.elf
 	avr-objcopy -I elf32-avr -O ihex ${TARGET}.elf ${TARGET}.ihex
