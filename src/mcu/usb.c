@@ -1,6 +1,24 @@
-#include "usb.h"
 #include "max3421e/max3421e_constants.h"
 #include "max3421e/max3421e_usb.h"
+#include "usb.h"
+
+static usb_eventHandler * eventHandler;
+
+void usb_setEventHandler(usb_eventHandler * handler)
+{
+	eventHandler = handler;
+}
+
+/**
+ * Fires a USB event. This calls the callback function set by usb_setEventHandler.
+ *
+ * @param device the device the events relates to.
+ * @param event event type (i.e. connected, disconnected)
+ */
+void usb_fireEvent(usb_device * device, usb_eventType event)
+{
+	eventHandler(device, event);
+}
 
 void usb_initEndPoint(usb_endpoint * endpoint, uint8_t address)
 {
@@ -15,7 +33,7 @@ void usb_initEndPoint(usb_endpoint * endpoint, uint8_t address)
 int usb_printDeviceInfo(usb_device * device)
 {
 	int rcode;
-    char buf[128];
+    // char buf[128];
 
     // Read the device descriptor
 	usb_deviceDescriptor deviceDescriptor;
@@ -29,6 +47,7 @@ int usb_printDeviceInfo(usb_device * device)
     avr_serialPrintf("Device subclass: %d\n", deviceDescriptor.bDeviceSubClass);
     avr_serialPrintf("Device protocol: %d\n", deviceDescriptor.bDeviceProtocol);
 
+    /*
     usb_getString(device, deviceDescriptor.iManufacturer, device->firstStringLanguage, 128, buf);
     avr_serialPrintf("Manufacturer: %d %s\n", deviceDescriptor.iManufacturer, buf);
 
@@ -37,6 +56,7 @@ int usb_printDeviceInfo(usb_device * device)
 
     usb_getString(device, deviceDescriptor.iSerialNumber, device->firstStringLanguage, 128, buf);
     avr_serialPrintf("Serial number: %s\n", buf);
+    */
 
     return 0;
 }
@@ -44,8 +64,6 @@ int usb_printDeviceInfo(usb_device * device)
 int usb_initDevice(usb_device * device, int configuration)
 {
 	char buf[4];
-
-	avr_serialPrintf("Initialising USB device ... %d %d\n", device->address, configuration);
 
 	uint8_t rcode;
 

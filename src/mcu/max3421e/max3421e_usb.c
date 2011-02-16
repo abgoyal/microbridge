@@ -8,13 +8,14 @@ static uint8_t usb_task_state = USB_DETACHED_SUBSTATE_INITIALIZE;
 
 usb_device deviceTable[USB_NUMDEVICES + 1];
 
-usb_device deviceZero;
-
 /**
  * Initialises the USB layer.
  */
 void usb_init()
 {
+ 	max3421e_init();
+	max3421e_powerOn();
+
 	uint8_t i;
 
 	// Initialise the USB state machine.
@@ -26,7 +27,7 @@ void usb_init()
 
 	// Address 0 is used to configure devices and assign them an address when they are first plugged in
 	deviceTable[0].address = 0;
-	usb_initEndPoint(&(deviceZero.control), 0);
+	usb_initEndPoint(&(deviceTable[0].control), 0);
 
 }
 
@@ -47,7 +48,7 @@ usb_device * usb_getDevice(uint8_t address)
 	return &(deviceTable[address]);
 }
 
-int usb_dispatchPacket(uint8_t token, usb_endpoint * endpoint)
+int usb_dispatchPacket(uint8_t token, usb_endpoint * endpoint, unsigned int nakLimit)
 {
 	unsigned long timeout = avr_millis() + USB_XFER_TIMEOUT;
 	uint8_t tmpdata;
@@ -57,46 +58,48 @@ int usb_dispatchPacket(uint8_t token, usb_endpoint * endpoint)
 
 	while (timeout > avr_millis())
 	{
-		max3421e_write(MAX_REG_HXFR, (token | endpoint->address)); //launch the transfer
+		// Launch the transfer.
+		max3421e_write(MAX_REG_HXFR, (token | endpoint->address));
 		rcode = 0xff;
+
+		// Wait for transfer completion.
 		while (avr_millis() < timeout)
-		{ //wait for transfer completion
+		{
 			tmpdata = max3421e_read(MAX_REG_HIRQ);
 			if (tmpdata & bmHXFRDNIRQ)
 			{
-				max3421e_write(MAX_REG_HIRQ, bmHXFRDNIRQ); //clear the interrupt
+				// Clear the interrupt.
+				max3421e_write(MAX_REG_HIRQ, bmHXFRDNIRQ);
 				rcode = 0x00;
 				break;
-			}//if( tmpdata & bmHXFRDNIRQ
-		}//while ( avr_millis() < timeout
+			}
+		}
 
+		// Exit if timeout.
 		if (rcode != 0x00)
-		{ //exit if timeout
+		{
 			return (rcode);
 		}
 
-		rcode = (max3421e_read(MAX_REG_HRSL) & 0x0f); //analyze transfer result
+		// Analyze transfer result.
+		rcode = (max3421e_read(MAX_REG_HRSL) & 0x0f);
 
 		switch (rcode)
 		{
-		case hrNAK:
-			nak_count++;
-			if (nak_count == USB_NAK_LIMIT)
-			{
+			case hrNAK:
+				nak_count++;
+				if (nak_count == nakLimit)
+					return (rcode);
+				break;
+			case hrTIMEOUT:
+				retry_count++;
+				if (retry_count == USB_RETRY_LIMIT)
+					return (rcode);
+				break;
+			default:
 				return (rcode);
-			}
-			break;
-		case hrTIMEOUT:
-			retry_count++;
-			if (retry_count == USB_RETRY_LIMIT)
-			{
-				return (rcode);
-			}
-			break;
-		default:
-			return (rcode);
-		}//switch( rcode
-	}//while( timeout > avr_millis()
+		}
+	}
 
 	return (rcode);
 }
@@ -104,16 +107,19 @@ int usb_dispatchPacket(uint8_t token, usb_endpoint * endpoint)
 /**
  * USB main task. Performs enumeration/cleanup
  */
-void usb_poll(void) //USB state machine
+void usb_poll(void)
 {
 	uint8_t i;
 	uint8_t rcode;
-	static uint8_t tmpaddr;
 	uint8_t tmpdata;
 	static unsigned long delay = 0;
 	usb_deviceDescriptor deviceDescriptor;
-	tmpdata = max3421e_getVbusState();
+
+	// Poll the MAX3421E device.
+	max3421e_poll();
+
 	/* modify USB task state if Vbus changed */
+	tmpdata = max3421e_getVbusState();
 
 	switch (tmpdata)
 	{
@@ -142,7 +148,13 @@ void usb_poll(void) //USB state machine
 	switch (usb_task_state)
 	{
 	case USB_DETACHED_SUBSTATE_INITIALIZE:
-		avr_serialPrintf("USB_DETACHED_SUBSTATE_INITIALIZE");
+
+		// TODO right now it looks like the USB board is just reset on disconnect. Fire disconnect for all connected
+		// devices.
+		for (i = 1; i < USB_NUMDEVICES; i++)
+			if (deviceTable[i].active)
+				usb_fireEvent(&(deviceTable[i]), USB_DISCONNECT);
+
 		usb_init();
 		usb_task_state = USB_DETACHED_SUBSTATE_WAIT_FOR_DEVICE;
 		break;
@@ -188,12 +200,12 @@ void usb_poll(void) //USB state machine
 	case USB_ATTACHED_SUBSTATE_GET_DEVICE_DESCRIPTOR_SIZE:
 		// toggle( BPNT_0 );
 
-		deviceZero.control.maxPacketSize = 8;
+		deviceTable[0].control.maxPacketSize = 8;
 
-		rcode = usb_getDeviceDescriptor(&deviceZero, &deviceDescriptor);
+		rcode = usb_getDeviceDescriptor(&deviceTable[0], &deviceDescriptor);
 		if (rcode == 0)
 		{
-			deviceZero.control.maxPacketSize = deviceDescriptor.bMaxPacketSize0;
+			deviceTable[0].control.maxPacketSize = deviceDescriptor.bMaxPacketSize0;
 			usb_task_state = USB_STATE_ADDRESSING;
 		} else
 		{
@@ -213,29 +225,38 @@ void usb_poll(void) //USB state machine
 				// deviceTable[i].epinfo = deviceTable[0].epinfo;
 
 				deviceTable[i].address = i;
+				deviceTable[i].active = true;
+
 				usb_initEndPoint(&(deviceTable[i].control), 0);
 
 				//temporary record
 				//until plugged with real device endpoint structure
 				rcode = usb_setAddress(&deviceTable[0], i);
 
-				avr_serialPrintf("Assigning USB address %d\n", i);
-
 				if (rcode == 0)
 				{
-					tmpaddr = i;
-					usb_task_state = USB_STATE_CONFIGURING;
+					usb_fireEvent(&deviceTable[i], USB_CONNECT);
+					// usb_task_state = USB_STATE_CONFIGURING;
+					// NB: I've bypassed the configuring state, because configuration should be handled
+					// in the usb event handler.
+					usb_task_state = USB_STATE_RUNNING;
 				} else
 				{
-					usb_error = USB_STATE_ADDRESSING; //set address error
+					usb_fireEvent(&deviceTable[i], USB_ADRESSING_ERROR);
+
+					// TODO remove usb_error at some point?
+					usb_error = USB_STATE_ADDRESSING;
 					usb_task_state = USB_STATE_ERROR;
 				}
 				break; //break if address assigned or error occured during address assignment attempt
 			}
 		}
 
+		// If no vacant spot was found in the device table, fire an error.
 		if (usb_task_state == USB_STATE_ADDRESSING)
 		{
+			usb_fireEvent(&deviceTable[i], USB_ADRESSING_ERROR);
+
 			// No vacant place in devtable
 			usb_error = 0xfe;
 			usb_task_state = USB_STATE_ERROR;
@@ -296,7 +317,7 @@ int usb_getString(usb_device * device, uint8_t index, uint8_t languageId, uint16
  * @param data target buffer.
  * @return number of bytes read, or error code in case of failure.
  */
-int usb_read(usb_device * device, usb_endpoint * endpoint, uint16_t length, uint8_t * data)
+int usb_read(usb_device * device, usb_endpoint * endpoint, uint16_t length, uint8_t * data, unsigned int nakLimit)
 {
 	uint8_t returnCode, bytesRead;
 	uint8_t maxPacketSize = endpoint->maxPacketSize;
@@ -313,7 +334,7 @@ int usb_read(usb_device * device, usb_endpoint * endpoint, uint16_t length, uint
 	{
 
 		// Start IN transfer
-		returnCode = usb_dispatchPacket(tokIN, endpoint);
+		returnCode = usb_dispatchPacket(tokIN, endpoint, nakLimit);
 
 		if (returnCode) return -1;
 
@@ -358,11 +379,12 @@ int usb_read(usb_device * device, usb_endpoint * endpoint, uint16_t length, uint
  * @param device USB bulk device.
  * @param device length number of bytes to read.
  * @param data target buffer.
+ *
  * @return number of bytes read, or error code in case of failure.
  */
-int usb_bulkRead(usb_device * device, uint16_t length, uint8_t * data)
+int usb_bulkRead(usb_device * device, uint16_t length, uint8_t * data, boolean poll)
 {
-	return usb_read(device, &(device->bulk_in), length, data);
+	return usb_read(device, &(device->bulk_in), length, data, poll ? 1 : USB_NAK_LIMIT);
 }
 
 
@@ -491,7 +513,7 @@ uint8_t usb_ctrlData(usb_device * device, boolean direction, uint16_t length, ui
 	{
 		// IN transfer
 		device->control.receiveToggle = bmRCVTOG1;
-		return usb_read(device, &(device->control), length, data);
+		return usb_read(device, &(device->control), length, data, USB_NAK_LIMIT);
 
 	} else
 	{
@@ -543,7 +565,7 @@ int usb_controlRequest(
 
 	// Write setup packet to the FIFO and dispatch
 	max3421e_writeMultiple(MAX_REG_SUDFIFO, 8, (uint8_t *) &setup_pkt);
-	rcode = usb_dispatchPacket(tokSETUP, &(device->control));
+	rcode = usb_dispatchPacket(tokSETUP, &(device->control), USB_NAK_LIMIT);
 
 	// Print error in case of failure.
 	if (rcode)
@@ -565,15 +587,11 @@ int usb_controlRequest(
 		}
 	}
 
-	avr_serialPrintf("direction %s\n", direction?"in":"out");
-
 	// Status stage.
 	if (direction)
-		rcode = usb_dispatchPacket(tokOUTHS, &(device->control));
+		rcode = usb_dispatchPacket(tokOUTHS, &(device->control), USB_NAK_LIMIT);
 	else
-		rcode = usb_dispatchPacket(tokINHS, &(device->control));
-
-	avr_serialPrintf("rcode %d", rcode);
+		rcode = usb_dispatchPacket(tokINHS, &(device->control), USB_NAK_LIMIT);
 
 	if (rcode)
 		return -3;
@@ -604,11 +622,8 @@ int usb_getConfigurationDescriptor(usb_device * device, uint8_t conf, uint16_t l
 	uint16_t descriptorLength;
 	int rcode;
 
-	avr_serialPrintf("device %d, %d\n", device->address, conf);
-
 	// Read the length of the configuration descriptor.
 	rcode = (usb_controlRequest(device, bmREQ_GET_DESCR, USB_REQUEST_GET_DESCRIPTOR, conf, USB_DESCRIPTOR_CONFIGURATION, 0x0000, 4, data));
-	avr_serialPrintf("rcode %d\n", rcode);
 	if (rcode) return -1;
 
 	descriptorLength = (data[3] << 8) | data[2];

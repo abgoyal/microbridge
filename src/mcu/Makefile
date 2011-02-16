@@ -1,4 +1,5 @@
 CC=avr-gcc
+
 CFLAGS=-mmcu=atmega1280 -Wall -Os -pedantic -std=c99  
 LINKERFLAGS=-mmcu=atmega1280 -Wl,-u,vfprintf -lprintf_flt
 

@@ -114,8 +114,19 @@ typedef struct
 
 } usb_device;
 
+typedef enum
+{
+	USB_CONNECT,
+	USB_DISCONNECT,
+	USB_ADRESSING_ERROR
+} usb_eventType;
+
+typedef void(usb_eventHandler)(usb_device * device, usb_eventType event);
+
 void usb_init();
 void usb_poll();
+void usb_setEventHandler(usb_eventHandler * handler);
+void usb_fireEvent(usb_device * device, usb_eventType event);
 
 int usb_getDeviceDescriptor(usb_device * device, usb_deviceDescriptor * descriptor);
 int usb_printDeviceInfo(usb_device * device);
@@ -125,7 +136,7 @@ usb_device * usb_getDevice(uint8_t address);
 
 void usb_initEndPoint(usb_endpoint * endpoint, uint8_t address);
 
-int usb_bulkRead(usb_device * device, uint16_t length, uint8_t * data);
+int usb_bulkRead(usb_device * device, uint16_t length, uint8_t * data, boolean poll);
 int usb_bulkWrite(usb_device * device, uint16_t length, uint8_t * data);
 
 #endif

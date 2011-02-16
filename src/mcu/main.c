@@ -3,6 +3,51 @@
 #include "adb.h"
 #include "max3421e/max3421e_usb.h"
 
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
+static adb_connection * shell;
+static char c;
+
+ISR(USART0_RX_vect)
+{
+	c = UDR0;
+}
+
+void adbEventHandler(adb_connection * connection, adb_eventType event, uint16_t length, char * data)
+{
+	int i;
+
+	switch (event)
+	{
+	case ADB_CONNECT:
+		avr_serialPrintf("ADB EVENT CONNECT\n");
+		break;
+	case ADB_DISCONNECT:
+		avr_serialPrintf("ADB EVENT DISCONNECT\n");
+		break;
+	case ADB_CONNECTION_OPEN:
+		avr_serialPrintf("ADB EVENT OPEN connection=[%s]\n", connection->connectionString);
+		break;
+	case ADB_CONNECTION_CLOSE:
+		avr_serialPrintf("ADB EVENT CLOSE connection=[%s]\n", connection->connectionString);
+		break;
+	case ADB_CONNECTION_FAILED:
+		avr_serialPrintf("ADB EVENT FAILED connection=[%s]\n", connection->connectionString);
+		break;
+	case ADB_CONNECTION_RECEIVE:
+//		avr_serialPrintf("ADB EVENT RECEIVE connection=[%s]\n", connection->connectionString);
+
+		for (i=0; i<length; i++)
+			avr_serialPrintf("%c", data[i]);
+
+//		avr_serialPrintf("\n");
+
+		break;
+	}
+
+}
+
 int main()
 {
 	// Initialise avr timers
@@ -12,72 +57,24 @@ int main()
 	avr_serialInit(57600);
 
  	// Initialise USB host shield.
- 	max3421e_init();
-	max3421e_powerOn();
-	usb_init();
+	adb_init();
+	adb_setEventHandler(adbEventHandler);
 
- 	adb_usbHandle handle;
-
- 	boolean connected = false;
-
- 	// HACK, init servo control
- 	TCCR3A = 0;
-
- 	TCCR3A = (1<<COM3B1) | (1<<COM3C1) | (1<<WGM31);
- 	TCCR3B = (1<<WGM33) | (1<<WGM32) | (1<<CS31);
- 	ICR3 = 40000;
-
- 	DDRE |= (1<<4) | (1<<5);
-
- 	int c = 3000;
-
- 	//for (c=1000; c<5000; c+=10)
- 	{
-		OCR3B = c;
-		OCR3C = c;
- 		avr_delay(10);
- 	}
-
-	avr_serialPrint("Starting ... \n");
+	// adb_addConnection("tcp:4567", true);
+	shell = adb_addConnection("shell:", true);
 
 	while (1)
  	{
- 		max3421e_poll();
- 		usb_poll();
+		adb_poll();
 
- 		if (usb_getUsbTaskState() == USB_STATE_CONFIGURING)
-		{
-
- 			// avr_serialPrint("Checking for ADB device ... \n");
-
- 			usb_device * device = usb_getDevice(1);
-
- 			if (adb_isAdbDevice(device, 0, &handle))
- 			{
- 				avr_serialPrint("ADB device found!\n");
- 				adb_initUsb(&handle);
- 			}
-
- 			usb_setUsbTaskState(USB_STATE_RUNNING);
-
-		}
-
- 		if (usb_getUsbTaskState() == USB_STATE_RUNNING)
+ 		if (c!=0)
  		{
- 			if (!connected)
- 			{
- 	 			uint8_t rcode;
+ 			if (shell->status != ADB_OPEN)
+ 				avr_serialPrintf("Connection NOT open %d\n", shell->status);
 
- 	 			avr_serialPrintf("Sending CONNECT message ...\n");
+ 			adb_write(shell, 1, &c);
 
- 	 			rcode = adb_writeString(&handle, A_CNXN, 0x01000000, 4096, "host::microbridge");
- 	 			avr_serialPrintf("connect: %d\n", rcode);
-
- 	 			connected = true;
- 			}
-
- 			adb_poll(&handle);
-
+ 			c = 0;
  		}
 
  	}
