@@ -3,6 +3,8 @@
 #include "max3421e_usb.h"
 #include "../ch9.h"
 
+#include <util/delay.h>
+
 static uint8_t usb_error = 0;
 static uint8_t usb_task_state = USB_DETACHED_SUBSTATE_INITIALIZE;
 
@@ -50,7 +52,7 @@ usb_device * usb_getDevice(uint8_t address)
 
 int usb_dispatchPacket(uint8_t token, usb_endpoint * endpoint, unsigned int nakLimit)
 {
-	unsigned long timeout = avr_millis() + USB_XFER_TIMEOUT;
+	uint32_t timeout = avr_millis() + USB_XFER_TIMEOUT;
 	uint8_t tmpdata;
 	uint8_t rcode = 0;
 	unsigned int nak_count = 0;
@@ -58,18 +60,21 @@ int usb_dispatchPacket(uint8_t token, usb_endpoint * endpoint, unsigned int nakL
 
 	while (timeout > avr_millis())
 	{
+		// Analyze transfer result.
+
 		// Launch the transfer.
 		max3421e_write(MAX_REG_HXFR, (token | endpoint->address));
 		rcode = 0xff;
 
-		// Wait for transfer completion.
-		while (avr_millis() < timeout)
+		// Wait for interrupt
+		while (timeout > avr_millis())
 		{
 			tmpdata = max3421e_read(MAX_REG_HIRQ);
 			if (tmpdata & bmHXFRDNIRQ)
 			{
 				// Clear the interrupt.
 				max3421e_write(MAX_REG_HIRQ, bmHXFRDNIRQ);
+
 				rcode = 0x00;
 				break;
 			}
@@ -77,12 +82,18 @@ int usb_dispatchPacket(uint8_t token, usb_endpoint * endpoint, unsigned int nakL
 
 		// Exit if timeout.
 		if (rcode != 0x00)
-		{
 			return (rcode);
+
+		// Wait for HRSL
+		while (timeout > avr_millis())
+		{
+			rcode = (max3421e_read(MAX_REG_HRSL) & 0x0f);
+			if (rcode != hrBUSY)
+				break;
+//			else
+//				avr_serialPrintf("busy!\n");
 		}
 
-		// Analyze transfer result.
-		rcode = (max3421e_read(MAX_REG_HRSL) & 0x0f);
 
 		switch (rcode)
 		{
@@ -319,7 +330,7 @@ int usb_getString(usb_device * device, uint8_t index, uint8_t languageId, uint16
  */
 int usb_read(usb_device * device, usb_endpoint * endpoint, uint16_t length, uint8_t * data, unsigned int nakLimit)
 {
-	uint8_t returnCode, bytesRead;
+	uint8_t rcode, bytesRead;
 	uint8_t maxPacketSize = endpoint->maxPacketSize;
 
 	unsigned int totalTransferred = 0;
@@ -334,13 +345,28 @@ int usb_read(usb_device * device, usb_endpoint * endpoint, uint16_t length, uint
 	{
 
 		// Start IN transfer
-		returnCode = usb_dispatchPacket(tokIN, endpoint, nakLimit);
+		rcode = usb_dispatchPacket(tokIN, endpoint, nakLimit);
 
-		if (returnCode) return -1;
+		if (rcode)
+		{
+//			if (rcode!=hrNAK)
+//				avr_serialPrintf("usb_read: dispatch error %d\n", rcode);
+
+			if (rcode==hrTOGERR)
+			{
+				if (endpoint->sendToggle==bmSNDTOG0) endpoint->sendToggle=bmSNDTOG1;
+				if (endpoint->sendToggle==bmSNDTOG1) endpoint->sendToggle=bmSNDTOG0;
+			}
+
+			return -1;
+		}
 
 		// Assert that the RCVDAVIRQ bit in register MAX_REG_HIRQ is set.
-		// TODO: the absence of RCVDAVIRQ indicates a toggle error. Need to add handling for that.
-		if ((max3421e_read(MAX_REG_HIRQ) & bmRCVDAVIRQ) == 0) return -2;
+		if ((max3421e_read(MAX_REG_HIRQ) & bmRCVDAVIRQ) == 0)
+		{
+			// TODO: the absence of RCVDAVIRQ indicates a toggle error. Need to add handling for that.
+			return -2;
+		}
 
 		// Obtain the number of bytes in FIFO.
 		bytesRead = max3421e_read(MAX_REG_RCVBC);
@@ -394,7 +420,7 @@ int usb_bulkRead(usb_device * device, uint16_t length, uint8_t * data, boolean p
  * @param device USB bulk device.
  * @param device length number of bytes to read.
  * @param data target buffer.
- * @return number of bytes read, or error code in case of failure.
+ * @return number of bytes written, or error code in case of failure.
  */
 int usb_write(usb_device * device, usb_endpoint * endpoint, uint16_t length, uint8_t * data)
 {
@@ -410,15 +436,12 @@ int usb_write(usb_device * device, usb_endpoint * endpoint, uint16_t length, uin
 	unsigned int bytes_left = length;
 	unsigned int nak_limit = USB_NAK_LIMIT;
 
-	unsigned long timeout = avr_millis() + USB_XFER_TIMEOUT;
+	uint32_t timeout = avr_millis() + USB_XFER_TIMEOUT;
 
 	uint8_t maxPacketSize = endpoint->maxPacketSize;
 
-	if (!maxPacketSize)
-	{
-		//todo: move this check close to epinfo init. Make it 1< pktsize <64
-		return 0xFE;
-	}
+	// If maximum packet size is not set, return.
+	if (!maxPacketSize) return 0xFE;
 
 	max3421e_write(MAX_REG_HCTL, endpoint->sendToggle); //set toggle value
 
@@ -466,24 +489,31 @@ int usb_write(usb_device * device, usb_endpoint * endpoint, uint16_t length, uin
 				break;
 			default:
 				return (rcode);
-			}//switch( rcode...
-			// process NAK according to Host out NAK bug
+			}
+
+			// Process NAK according to Host out NAK bug.
 			max3421e_write(MAX_REG_SNDBC, 0);
 			max3421e_write(MAX_REG_SNDFIFO, *data_p);
 			max3421e_write(MAX_REG_SNDBC, bytes_tosend);
 			max3421e_write(MAX_REG_HXFR, (tokOUT | endpoint->address)); //dispatch packet
-			while (!(max3421e_read(MAX_REG_HIRQ) & bmHXFRDNIRQ))
-				; //wait for the completion IRQ
-			max3421e_write(MAX_REG_HIRQ, bmHXFRDNIRQ); //clear IRQ
+
+			// Wait for the completion interrupt.
+			while (!(max3421e_read(MAX_REG_HIRQ) & bmHXFRDNIRQ));
+
+			// Clear interrupt.
+			max3421e_write(MAX_REG_HIRQ, bmHXFRDNIRQ);
+
 			rcode = (max3421e_read(MAX_REG_HRSL) & 0x0f);
-		}//while( rcode && ....
+		}
+
 		bytes_left -= bytes_tosend;
 		data_p += bytes_tosend;
 	}
 
 	endpoint->sendToggle = (max3421e_read(MAX_REG_HRSL) & bmSNDTOGRD) ? bmSNDTOG1 : bmSNDTOG0; //update toggle
 
-	return (rcode); //should be 0 in all cases
+	// Should be 0 in all cases.
+	return (rcode);
 }
 
 /**

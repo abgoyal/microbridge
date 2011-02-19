@@ -1,4 +1,5 @@
 #include "avr.h"
+#include <stdint.h>
 
 #define TIMER1_MULTIPLIER 64
 #define TIMER1_MILLIS_DIVIDER (F_CPU / 1000L)
@@ -17,9 +18,9 @@
 #define FRACT_INC ((MICROSECONDS_PER_TIMER0_OVERFLOW % 1000) >> 3)
 #define FRACT_MAX (1000 >> 3)
 
-volatile unsigned long timer0_overflow_count = 0;
-volatile unsigned long timer0_millis = 0;
-static unsigned char timer0_fract = 0;
+volatile uint32_t timer0_overflow_count = 0;
+volatile uint32_t timer0_millis = 0;
+static uint8_t timer0_fract = 0;
 
 char flip = 0x00;
 volatile uint16_t timer1_overflow_count = 0x0;
@@ -29,22 +30,22 @@ SIGNAL(TIMER0_OVF_vect)
 
 	// copy these to local variables so they can be stored in registers
 	// (volatile variables must be read from memory on every access)
-	unsigned long m = timer0_millis;
-	unsigned char f = timer0_fract;
+	uint32_t m = timer0_millis;
+	uint8_t f = timer0_fract;
 
 	m += MILLIS_INC;
 	f += FRACT_INC;
-	if (f >= FRACT_MAX) {
+	if (f >= FRACT_MAX)
+	{
 		f -= FRACT_MAX;
 		m += 1;
 	}
 
 	timer0_fract = f;
 	timer0_millis = m;
-	timer0_overflow_count++;
+	timer0_overflow_count ++;
 }
 
-/*
 unsigned long avr_millis()
 {
 	unsigned long m;
@@ -61,7 +62,6 @@ unsigned long avr_millis()
 
 	return m;
 }
-*/
 
 uint64_t avr_ticks()
 {
@@ -81,10 +81,12 @@ uint32_t avr_micros()
 	return ((uint32_t)(TCNT1 + ((uint32_t)timer1_overflow_count << 16)) * TIMER1_MULTIPLIER) / TIMER1_MICROS_DIVIDER;
 }
 
+/*
 uint32_t avr_millis()
 {
 	return ((uint32_t)(TCNT1 + ((uint32_t)timer1_overflow_count << 16)) * TIMER1_MULTIPLIER) / TIMER1_MILLIS_DIVIDER;
 }
+*/
 
 SIGNAL(TIMER1_OVF_vect)
 {

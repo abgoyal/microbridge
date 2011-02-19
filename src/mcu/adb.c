@@ -35,9 +35,15 @@ void adb_setEventHandler(adb_eventHandler * handler)
  * @param length payload length or zero if no payload.
  * @param data payload data if relevant or NULL otherwise.
  */
-static void adb_fireEvent(adb_connection * connection, adb_eventType type, uint16_t length, char * data)
+static void adb_fireEvent(adb_connection * connection, adb_eventType type, uint16_t length, uint8_t * data)
 {
-	eventHandler(connection, type, length, data);
+	// Fire the global event handler, if set.
+	if (eventHandler!=NULL)
+		eventHandler(connection, type, length, data);
+
+	// Fire the event handler of the connection in question, if relevant
+	if (connection!=NULL && connection->eventHandler!=NULL)
+		connection->eventHandler(connection, type, length, data);
 }
 
 /**
@@ -47,29 +53,70 @@ static void adb_fireEvent(adb_connection * connection, adb_eventType type, uint1
  * reconnected when the USB cable is re-plugged in. Non-persistent connections will connect only once,
  * and should never be used after they are closed.
  *
+ * The connection string is copied into the adb_connection record and may not exceed ADB_CONNECTIONSTRING_LENGTH-1
+ * characters.
+ *
  * @param connectionString ADB connectionstring. I.e. "tcp:1234" or "shell:ls".
  * @param reconnect true for automatic reconnect (persistent connections).
- * @return an ADB connection record or NULL on failure (not enough slots).
+ * @param handler event handler.
+ * @return an ADB connection record or NULL on failure (not enough slots or connection string too long).
  */
-adb_connection * adb_addConnection(char * connectionString, boolean reconnect)
+adb_connection * adb_addConnection(char * connectionString, boolean reconnect, adb_eventHandler * handler)
 {
 	int index;
+
+	// Precondition check (connection string length)
+	if (strlen(connectionString)+1 > ADB_CONNECTSTRING_LENGTH)
+		return NULL;
 
 	// Find an empty spot in the connection list.
 	for (index=0; index<ADB_MAX_CONNECTIONS; index++)
 		if (connections[index].status==ADB_UNUSED)
 		{
+			// Copy the connection string to the ADB connection record.
 			snprintf(connections[index].connectionString, ADB_CONNECTSTRING_LENGTH, "%s", connectionString);
+
+			// Initialise the record.
 			connections[index].localID = index + 1; // local id may not be zero
 			connections[index].status = ADB_CLOSED;
 			connections[index].lastConnectionAttempt = 0;
 			connections[index].reconnect = reconnect;
+			connections[index].eventHandler = handler;
 
 			return &connections[index];
 		}
 
 	// Unable to find an empty spot, all connection slots in use.
 	return NULL;
+}
+
+/**
+ * Prints an ADB_message, for debugging purposes.
+ * @param message ADB message to print.
+ */
+static void adb_printMessage(adb_message * message)
+{
+	switch(message->command)
+	{
+	case A_OKAY:
+		avr_serialPrintf("OKAY message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
+		break;
+	case A_CLSE:
+		avr_serialPrintf("CLSE message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
+		break;
+	case A_WRTE:
+		avr_serialPrintf("WRTE message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
+		break;
+	case A_CNXN:
+		avr_serialPrintf("CNXN message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
+		break;
+	case A_SYNC:
+		avr_serialPrintf("SYNC message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
+		break;
+	default:
+		avr_serialPrintf("WTF message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
+		break;
+	}
 }
 
 /**
@@ -91,6 +138,8 @@ static int adb_writeEmptyMessage(usb_device * device, uint32_t command, uint32_t
 	message.data_length = 0;
 	message.data_check = 0;
 	message.magic = command ^ 0xffffffff;
+
+//	avr_serialPrint(">>>> "); adb_printMessage(&message);
 
 	return usb_bulkWrite(device, sizeof(adb_message), (uint8_t*)&message);
 }
@@ -126,13 +175,13 @@ int adb_writeMessage(usb_device * device, uint32_t command, uint32_t arg0, uint3
 	message.data_check = sum;
 	message.magic = command ^ 0xffffffff;
 
+//	avr_serialPrint(">>>> "); adb_printMessage(&message);
+
 	rcode = usb_bulkWrite(device, sizeof(adb_message), (uint8_t*)&message);
 	if (rcode) return rcode;
 
 	rcode = usb_bulkWrite(device, length, data);
-
 	return rcode;
-
 }
 
 /**
@@ -148,6 +197,39 @@ int adb_writeMessage(usb_device * device, uint32_t command, uint32_t arg0, uint3
 int adb_writeStringMessage(usb_device * device, uint32_t command, uint32_t arg0, uint32_t arg1, char * str)
 {
 	return adb_writeMessage(device, command, arg0, arg1, strlen(str) + 1, (uint8_t*)str);
+}
+
+/**
+ * Poll an ADB message.
+ * @param message on success, the ADB message will be returned in this struct.
+ * @param poll true to poll for a packet on the input endpoint, false to wait for a packet. Use false here when a packet is expected (i.e. OKAY in response to WRTE)
+ * @return true iff a packet was successfully received, false otherwise.
+ */
+static boolean adb_pollMessage(adb_message * message, boolean poll)
+{
+	int bytesRead;
+	uint8_t buf[ADB_USB_PACKETSIZE];
+
+	// Poll a packet from the USB
+	bytesRead = usb_bulkRead(adbDevice, ADB_USB_PACKETSIZE, buf, poll);
+
+	// Check if the USB in transfer was successful.
+	if (bytesRead<0) return false;
+
+	// Check if the buffer contains a valid message
+	memcpy((void*)message, (void*)buf, sizeof(adb_message));
+
+	// If the message is corrupt, return.
+	if (message->magic != (message->command ^ 0xffffffff))
+	{
+//		avr_serialPrintf("Broken message, magic mismatch, %d bytes\n", bytesRead);
+		return false;
+	}
+
+	// Check if the received number of bytes matches our expected 24 bytes of ADB message header.
+	if (bytesRead != sizeof(adb_message)) return false;
+
+	return true;
 }
 
 /**
@@ -170,6 +252,7 @@ static void adb_openClosedConnections()
 			// Record the last attempt time
 			connections[i].lastConnectionAttempt = avr_millis();
 			connections[i].status = ADB_OPENING;
+
 		}
 	}
 
@@ -193,8 +276,11 @@ static void adb_handleOkay(adb_connection * connection, adb_message * message)
 	}
 
 	// Check if the OKAY message was a response to a WRITE message.
-	if (connection->status==ADB_WRITING)
+	if (connection->status == ADB_WRITING)
+	{
 		connection->status = ADB_OPEN;
+	} else
+		avr_serialPrintf("OKAY %d\n", connection->status);
 
 }
 
@@ -229,7 +315,10 @@ static void adb_handleWrite(adb_connection * connection, adb_message * message)
 {
 	uint32_t bytesLeft = message->data_length;
 	uint8_t buf[ADB_USB_PACKETSIZE];
+	adb_connectionStatus previousStatus;
 	int bytesRead;
+
+	previousStatus = connection->status;
 
 	connection->status = ADB_RECEIVING;
 	connection->dataRead = 0;
@@ -241,17 +330,20 @@ static void adb_handleWrite(adb_connection * connection, adb_message * message)
 
 		// Read payload
 		bytesRead = usb_bulkRead(adbDevice, len, buf, false);
-		// TODO	error if (bytesRead < 0)
+
+		if (len != bytesRead)
+			avr_serialPrintf("bytes read mismatch: %d expected, %d read, %ld left\n", len, bytesRead, bytesLeft);
 
 		connection->dataRead += len;
-		adb_fireEvent(connection, ADB_CONNECTION_RECEIVE, len, (char*)buf);
+		adb_fireEvent(connection, ADB_CONNECTION_RECEIVE, len, buf);
 
 		bytesLeft -= bytesRead;
 	}
 
 	// Send OKAY message in reply.
 	bytesRead = adb_writeEmptyMessage(adbDevice, A_OKAY, message->arg1, message->arg0);
-	connection->status = ADB_OPEN;
+
+	connection->status = previousStatus;
 }
 
 /**
@@ -272,40 +364,30 @@ static void adb_closeAll()
 }
 
 /**
- * Poll an ADB message.
+ * Handles an ADB connect message. This is a response to a connect message sent from our side.
+ * @param message ADB message.
  */
-static boolean adb_pollMessage(adb_message * message)
-{
-	int bytesRead;
-
-	// Poll a packet from the USB
-	bytesRead = usb_bulkRead(adbDevice, ADB_USB_PACKETSIZE, (uint8_t*)message, true);
-
-	// Check if the USB in transfer was successful.
-	if (bytesRead<0) return false;
-
-	// Check if the received number of bytes matches our expected 24 bytes of ADB message header.
-	if (bytesRead != sizeof(adb_message)) return false;
-
-	return true;
-}
-
 static void adb_handleConnect(adb_message * message)
 {
 	unsigned int bytesRead;
-	char buf[MAX_BUF_SIZE];
+	uint8_t buf[MAX_BUF_SIZE];
 	uint16_t len;
 
 	// Read payload (remote ADB device ID)
 	len = message->data_length < MAX_BUF_SIZE ? message->data_length : MAX_BUF_SIZE;
 	bytesRead = usb_bulkRead(adbDevice, len, buf, false);
 
+	// Signal that we are now connected to an Android device (yay!)
 	connected = true;
 
+	// Fire event.
 	adb_fireEvent(NULL, ADB_CONNECT, len, buf);
 
 }
 
+/**
+ * This method is called periodically to check for new messages on the USB bus and process them.
+ */
 void adb_poll()
 {
 	int i;
@@ -321,7 +403,7 @@ void adb_poll()
 	if (!connected)
 	{
 		adb_writeStringMessage(adbDevice, A_CNXN, 0x01000000, 4096, "host::microbridge");
-		avr_delay(500);
+		avr_delay(500); // Give the device some time to respond.
 	}
 
 	// If we are connected, check if there are connections that need to be opened
@@ -329,37 +411,14 @@ void adb_poll()
 		adb_openClosedConnections();
 
 	// Check for an incoming ADB message.
-	if (!adb_pollMessage(&message))
+	if (!adb_pollMessage(&message, true))
 		return;
 
-//	switch (message.command)
-//	{
-//	case A_CNXN:
-//			avr_serialPrintf("ADB CONNECTION command\n");
-//			break;
-//	case A_OKAY:
-//			avr_serialPrintf("ADB OKAY command, local-id: %ld, remote-id:%ld\n", message.arg0, message.arg1);
-//			break;
-//	case A_OPEN:
-//			avr_serialPrintf("ADB OPEN command\n");
-//			break;
-//	case A_CLSE:
-//			avr_serialPrintf("ADB CLOSE command\n");
-//			break;
-//	case A_SYNC:
-//			avr_serialPrintf("ADB SYNC command\n");
-//			break;
-//	case A_WRTE:
-//			avr_serialPrintf("ADB WRITE command, local-id: %ld, remote-id:%ld\n", message.arg0, message.arg1);
-//			break;
-//	default:
-//			avr_serialPrintf("Unknown ADB command: %lx\n", message.command);
-//			break;
-//	}
-
 	// Handle a response from the ADB device to our CONNECT message.
-	if (message.command==A_CNXN)
+	if (message.command == A_CNXN)
 		adb_handleConnect(&message);
+
+//	avr_serialPrintf("<<<<", connected); adb_printMessage(&message);
 
 	// Handle messages for specific connections
 	for (i=0; i<ADB_MAX_CONNECTIONS; i++)
@@ -501,8 +560,11 @@ static void adb_initUsb(usb_device * device, adb_usbConfiguration * handle)
 	adbDevice = device;
 }
 
-// USB event handler. Detects device connect/disconnect and configures the device
-// if it's an ADB device.
+/**
+ * Handles events from the USB layer.
+ * @param device USB device that generated the event.
+ * @param event USB event.
+ */
 static void adb_usbEventHandler(usb_device * device, usb_eventType event)
 {
 	adb_usbConfiguration handle;
@@ -538,6 +600,13 @@ static void adb_usbEventHandler(usb_device * device, usb_eventType event)
 	}
 }
 
+/**
+ * Write a set of bytes to an open ADB connection.
+ * @param connection ADB connection to write the data to.
+ * @param length number of bytes to transmit.
+ * @param data data to send.
+ * @return number of transmitted bytes, or -1 on failure.
+ */
 int adb_write(adb_connection * connection, uint16_t length, uint8_t * data)
 {
 	int ret;
@@ -549,13 +618,20 @@ int adb_write(adb_connection * connection, uint16_t length, uint8_t * data)
 	if (connection->status != ADB_OPEN) return -2;
 
 	// Write payload
-	connection->status = ADB_WRITING;
 	ret = adb_writeMessage(adbDevice, A_WRTE, connection->localID, connection->remoteID, length, data);
-	// avr_serialPrintf("err %d\n", ret);
+	if (ret==0)
+		connection->status = ADB_WRITING;
 
 	return ret;
 }
 
+/**
+ * Write a string to an open ADB connection. The trailing zero is not transmitted.
+ * @param connection ADB connection to write the data to.
+ * @param length number of bytes to transmit.
+ * @param data data to send.
+ * @return number of transmitted bytes, or -1 on failure.
+ */
 int adb_writeString(adb_connection * connection, char * str)
 {
 	int ret;
@@ -567,9 +643,9 @@ int adb_writeString(adb_connection * connection, char * str)
 	if (connection->status != ADB_OPEN) return -2;
 
 	// Write payload
-	connection->status = ADB_WRITING;
 	ret = adb_writeStringMessage(adbDevice, A_WRTE, connection->localID, connection->remoteID, str);
-	// avr_serialPrintf("err %d\n", ret);
+	if (ret==0)
+		connection->status = ADB_WRITING;
 
 	return ret;
 }

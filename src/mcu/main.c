@@ -1,20 +1,17 @@
 #include "avr.h"
-#include "spi.h"
 #include "adb.h"
-#include "max3421e/max3421e_usb.h"
 
-#include <avr/io.h>
-#include <avr/interrupt.h>
+static uint8_t c;
 
-static adb_connection * shell;
-static char c;
+adb_connection * shell;
 
 ISR(USART0_RX_vect)
 {
-	c = UDR0;
+	if (c == 0)
+		c = UDR0;
 }
 
-void adbEventHandler(adb_connection * connection, adb_eventType event, uint16_t length, char * data)
+void adbEventHandler(adb_connection * connection, adb_eventType event, uint16_t length, uint8_t * data)
 {
 	int i;
 
@@ -36,12 +33,9 @@ void adbEventHandler(adb_connection * connection, adb_eventType event, uint16_t 
 		avr_serialPrintf("ADB EVENT FAILED connection=[%s]\n", connection->connectionString);
 		break;
 	case ADB_CONNECTION_RECEIVE:
-//		avr_serialPrintf("ADB EVENT RECEIVE connection=[%s]\n", connection->connectionString);
 
 		for (i=0; i<length; i++)
 			avr_serialPrintf("%c", data[i]);
-
-//		avr_serialPrintf("\n");
 
 		break;
 	}
@@ -58,22 +52,17 @@ int main()
 
  	// Initialise USB host shield.
 	adb_init();
-	adb_setEventHandler(adbEventHandler);
+	shell = adb_addConnection("shell:", true, adbEventHandler);
 
-	// adb_addConnection("tcp:4567", true);
-	shell = adb_addConnection("shell:", true);
+	uint32_t lastTime = avr_millis();
 
 	while (1)
  	{
 		adb_poll();
 
- 		if (c!=0)
+ 		if (c!=0 && shell->status == ADB_OPEN)
  		{
- 			if (shell->status != ADB_OPEN)
- 				avr_serialPrintf("Connection NOT open %d\n", shell->status);
-
  			adb_write(shell, 1, &c);
-
  			c = 0;
  		}
 
