@@ -55,7 +55,7 @@ enum
 #define MAX_GPX() ((PORTH & 0x20) >> 0x20)
 #define MAX_RESET(x) { if (x) PORTH |= 0x10; else PORTH &= ~0x10; }
 
-#elif defined(__AVR_ATmega328P__)
+#elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
 
 #define MAX_SS(x) SPI_SS(x)
 #define MAX_INT() ((PORTB & 2) >> 1)

@@ -42,7 +42,7 @@
 #define SPI_BIT_SCK 0x2
 #define SPI_BIT_SS 0x1
 
-#elif defined(__AVR_ATmega328P__)
+#elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
 
 #define SPI_PORT PORTB
 #define SPI_PORT_DIR DDRB

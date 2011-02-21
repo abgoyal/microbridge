@@ -22,7 +22,7 @@ void max3421e_init()
 	// Set RESET pin to output
 	DDRH |= 0x10;
 
-#elif defined(__AVR_ATmega328P__)
+#elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
 
 	// Set MAX_INT and MAX_GPX pins to input mode.
 	DDRB &= ~0x3;

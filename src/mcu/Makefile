@@ -1,7 +1,8 @@
 CC=avr-gcc
 
-#MCU=atmega328p
-MCU=atmega1280
+#MCU=atmega168
+MCU=atmega328p
+#MCU=atmega1280
 CFLAGS=-mmcu=${MCU} -Wall -Os -pedantic -std=c99
 LINKERFLAGS=-mmcu=${MCU}
 
