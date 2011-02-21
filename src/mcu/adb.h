@@ -8,6 +8,7 @@
 
 // ADB
 #define MAX_PAYLOAD 4096;
+
 #define A_SYNC 0x434e5953
 #define A_CNXN 0x4e584e43
 #define A_OPEN 0x4e45504f
@@ -15,9 +16,13 @@
 #define A_CLSE 0x45534c43
 #define A_WRTE 0x45545257
 
+#define ADB_CLASS 0xff
+#define ADB_SUBCLASS 0x42
+#define ADB_PROTOCOL 0x1
+
 #define ADB_USB_PACKETSIZE 0x40
 #define ADB_CONNECTSTRING_LENGTH 64
-#define ADB_MAX_CONNECTIONS 8
+#define ADB_MAX_CONNECTIONS 4
 #define ADB_CONNECTION_RETRY_TIME 1000
 
 typedef struct

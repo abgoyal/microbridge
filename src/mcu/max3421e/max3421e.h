@@ -48,23 +48,21 @@ enum
 	MAX_REG_HRSL = 0xf8
 } max_registers;
 
-// Definitions for the ports and bitmasks required to drive the various pins.
-#define MAX_PORT_SS PORTB
-#define MAX_PORT PORTH
-#define MAX_PORT_DIR DDRH
+#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
 
-#define MAX_BIT_INT 0x40
-#define MAX_BIT_GPX 0x20
-#define MAX_BIT_RESET 0x10
-#define MAX_BIT_SS 0x10
+#define MAX_SS(x) { if (x) PORTB |= 0x10; else PORTB &= ~0x10; }
+#define MAX_INT() ((PORTH & 0x40) >> 0x40)
+#define MAX_GPX() ((PORTH & 0x20) >> 0x20)
+#define MAX_RESET(x) { if (x) PORTH |= 0x10; else PORTH &= ~0x10; }
 
-#define MAX_SHIFT_INT 6
-#define MAX_SHIFT_GPX 5
+#elif defined(__AVR_ATmega328P__)
 
-#define MAX_INT() ((MAX_PORT & MAX_BIT_INT) >> MAX_SHIFT_INT)
-#define MAX_GPX() ((MAX_PORT & MAX_BIT_GPX) >> MAX_SHIFT_GPX)
-#define MAX_RESET(x) { if (x) MAX_PORT |= MAX_BIT_RESET; else MAX_PORT &= ~MAX_BIT_RESET; }
-#define MAX_SS(x) { if (x) MAX_PORT_SS |= MAX_BIT_SS; else MAX_PORT_SS &= ~MAX_BIT_SS; }
+#define MAX_SS(x) SPI_SS(x)
+#define MAX_INT() ((PORTB & 2) >> 1)
+#define MAX_GPX() (PORTB & 1)
+#define MAX_RESET(x) { if (x) PORTD |= 0x80; else PORTD &= ~0x80; }
+
+#endif
 
 void max3421e_init();
 void max3421e_write(uint8_t reg, uint8_t val);

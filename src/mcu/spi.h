@@ -33,6 +33,8 @@
 
 #define SPI_LSBFIRST 0
 
+#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+
 #define SPI_PORT PORTB
 #define SPI_PORT_DIR DDRB
 #define SPI_BIT_MISO 0x8
@@ -40,19 +42,22 @@
 #define SPI_BIT_SCK 0x2
 #define SPI_BIT_SS 0x1
 
+#elif defined(__AVR_ATmega328P__)
+
+#define SPI_PORT PORTB
+#define SPI_PORT_DIR DDRB
+#define SPI_BIT_SCK 0x20
+#define SPI_BIT_MISO 0x10
+#define SPI_BIT_MOSI 0x8
+#define SPI_BIT_SS 0x4
+
+#endif
+
 #define SPI_MISO ((SPI_PORT & SPI_BIT_MISO) >> 3)
 #define SPI_MOSI(x) { if (x) SPI_PORT |= SPI_BIT_MOSI; else SPI_PORT &= ~SPI_BIT_MOSI; }
 #define SPI_SCK(x) { if (x) SPI_PORT |= SPI_BIT_SCK; else SPI_PORT &= ~SPI_BIT_SCK; }
 #define SPI_SS(x) { if (x) SPI_PORT |= SPI_BIT_SS; else SPI_PORT &= ~SPI_BIT_SS; }
 
 void spi_begin();
-void spi_end();
-void spi_setBitOrder(uint8_t bitOrder);
-void spi_setDataMode(uint8_t mode);
-void spi_setClockDivider(uint8_t rate);
-
-uint8_t transfer(uint8_t _data);
-void attachInterrupt();
-void detachInterrupt(); // Default
 
 #endif

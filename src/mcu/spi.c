@@ -18,16 +18,11 @@ void spi_begin()
 	// a general purpose output port (it doesn't influence
 	// SPI operations).
 
-#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
-
 	SPI_PORT_DIR |= SPI_BIT_MOSI | SPI_BIT_SCK | SPI_BIT_SS;
 	SPI_PORT_DIR &= ~SPI_BIT_MISO;
 
 	SPI_PORT &= ~(SPI_BIT_MOSI | SPI_BIT_SCK);
 	SPI_PORT |= SPI_BIT_SS;
-#else
-	#error "Only ATMega1280 and ATMega2560 supported"
-#endif
 
 	// Warning: if the SS pin ever becomes a LOW INPUT then SPI
 	// automatically switches to Slave, so the data direction of
@@ -36,6 +31,7 @@ void spi_begin()
 	SPCR |= _BV(SPE);
 }
 
+/*
 void spi_end()
 {
 	SPCR &= ~_BV(SPE);
@@ -78,3 +74,4 @@ void spi_detachInterrupt()
 {
 	SPCR &= ~_BV(SPIE);
 }
+*/

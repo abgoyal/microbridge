@@ -600,7 +600,7 @@ int usb_controlRequest(
 	// Print error in case of failure.
 	if (rcode)
 	{
-		avr_serialPrintf("Setup packet error: 0x%02x\n", rcode);
+//		avr_serialPrintf("Setup packet error: 0x%02x\n", rcode);
 		return -1;
 	}
 
@@ -612,7 +612,7 @@ int usb_controlRequest(
 		// If unsuccessful, return error.
 		if (rcode<0)
 		{
-			avr_serialPrintf("Data packet error: 0x%02x\n", rcode);
+//			avr_serialPrintf("Data packet error: 0x%02x\n", rcode);
 			return -2;
 		}
 	}

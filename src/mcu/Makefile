@@ -1,7 +1,9 @@
 CC=avr-gcc
 
-CFLAGS=-mmcu=atmega1280 -Wall -Os -pedantic -std=c99  
-LINKERFLAGS=-mmcu=atmega1280 -Wl,-u,vfprintf -lprintf_flt
+#MCU=atmega328p
+MCU=atmega1280
+CFLAGS=-mmcu=${MCU} -Wall -Os -pedantic -std=c99
+LINKERFLAGS=-mmcu=${MCU}
 
 #CC=gcc
 #CFLAGS=
@@ -17,7 +19,7 @@ all: ${TARGET}.elf
 	avr-objcopy -I elf32-avr -O binary ${TARGET}.elf ${TARGET}.bin
 	
 ${TARGET}.elf: ${OFILES}
-	${CC} ${LINKERFLAGS} ${OFILES} -o ${TARGET}.elf -lm
+	${CC} ${LINKERFLAGS} ${OFILES} -o ${TARGET}.elf
 	
 %.o: %.c
 	${CC} ${CFLAGS} -c $< -o ${<:.c=.o}

@@ -2,11 +2,6 @@
 
 #include "adb.h"
 
-// ADB device class, subclass, and protocol
-#define ADB_CLASS 0xff
-#define ADB_SUBCLASS 0x42
-#define ADB_PROTOCOL 0x1
-
 #define MAX_BUF_SIZE 256
 
 static usb_device * adbDevice;
@@ -94,6 +89,7 @@ adb_connection * adb_addConnection(char * connectionString, boolean reconnect, a
  * Prints an ADB_message, for debugging purposes.
  * @param message ADB message to print.
  */
+/*
 static void adb_printMessage(adb_message * message)
 {
 	switch(message->command)
@@ -118,6 +114,7 @@ static void adb_printMessage(adb_message * message)
 		break;
 	}
 }
+*/
 
 /**
  * Writes an empty message (without payload) to the ADB device.
@@ -277,10 +274,7 @@ static void adb_handleOkay(adb_connection * connection, adb_message * message)
 
 	// Check if the OKAY message was a response to a WRITE message.
 	if (connection->status == ADB_WRITING)
-	{
 		connection->status = ADB_OPEN;
-	} else
-		avr_serialPrintf("OKAY %d\n", connection->status);
 
 }
 
@@ -331,8 +325,8 @@ static void adb_handleWrite(adb_connection * connection, adb_message * message)
 		// Read payload
 		bytesRead = usb_bulkRead(adbDevice, len, buf, false);
 
-		if (len != bytesRead)
-			avr_serialPrintf("bytes read mismatch: %d expected, %d read, %ld left\n", len, bytesRead, bytesLeft);
+//		if (len != bytesRead)
+//			avr_serialPrintf("bytes read mismatch: %d expected, %d read, %ld left\n", len, bytesRead, bytesLeft);
 
 		connection->dataRead += len;
 		adb_fireEvent(connection, ADB_CONNECTION_RECEIVE, len, buf);

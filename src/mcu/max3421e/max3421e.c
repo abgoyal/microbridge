@@ -11,17 +11,34 @@ void max3421e_init()
 {
 	spi_begin();
 
+#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+
 	// Set MAX_INT and MAX_GPX pins to input mode.
-	MAX_PORT_DIR &= ~(MAX_BIT_INT | MAX_BIT_GPX);
+	DDRH &= ~(0x40 | 0x20);
 
 	// Set SPI !SS pint to output mode.
-	SPI_PORT_DIR |= MAX_BIT_SS;
+	DDRB |= 0x10;
+
+	// Set RESET pin to output
+	DDRH |= 0x10;
+
+#elif defined(__AVR_ATmega328P__)
+
+	// Set MAX_INT and MAX_GPX pins to input mode.
+	DDRB &= ~0x3;
+
+	// Set RESET pin to output
+	DDRD |= 0x80;
+
+	// Set SS pin to output
+	DDRB |= 0x4;
+
+#endif
 
 	// Pull SPI !SS high
 	MAX_SS(1);
 
 	// Reset
-	MAX_PORT_DIR |= MAX_BIT_RESET;
 	MAX_RESET(1);
 }
 

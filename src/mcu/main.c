@@ -1,14 +1,17 @@
 #include "avr.h"
 #include "adb.h"
 
-static uint8_t c;
+static uint8_t c = 0;
 
 adb_connection * shell;
 
+#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
 ISR(USART0_RX_vect)
+#elif defined(__AVR_ATmega328P__)
+ISR(USART_RX_vect)
+#endif
 {
-	if (c == 0)
-		c = UDR0;
+	c = UDR0;
 }
 
 void adbEventHandler(adb_connection * connection, adb_eventType event, uint16_t length, uint8_t * data)
@@ -53,8 +56,6 @@ int main()
  	// Initialise USB host shield.
 	adb_init();
 	shell = adb_addConnection("shell:", true, adbEventHandler);
-
-	uint32_t lastTime = avr_millis();
 
 	while (1)
  	{

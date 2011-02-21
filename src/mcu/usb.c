@@ -40,12 +40,12 @@ int usb_printDeviceInfo(usb_device * device)
     rcode = usb_getDeviceDescriptor(device, &deviceDescriptor);
     if (rcode) return rcode;
 
-    avr_serialPrintf("Vendor ID: %x\n", deviceDescriptor.idVendor);
-    avr_serialPrintf("Product ID: %x\n", deviceDescriptor.idProduct);
-    avr_serialPrintf("Configuration count: %d\n", deviceDescriptor.bNumConfigurations);
-    avr_serialPrintf("Device class: %d\n", deviceDescriptor.bDeviceClass);
-    avr_serialPrintf("Device subclass: %d\n", deviceDescriptor.bDeviceSubClass);
-    avr_serialPrintf("Device protocol: %d\n", deviceDescriptor.bDeviceProtocol);
+//    avr_serialPrintf("Vendor ID: %x\n", deviceDescriptor.idVendor);
+//    avr_serialPrintf("Product ID: %x\n", deviceDescriptor.idProduct);
+//    avr_serialPrintf("Configuration count: %d\n", deviceDescriptor.bNumConfigurations);
+//    avr_serialPrintf("Device class: %d\n", deviceDescriptor.bDeviceClass);
+//    avr_serialPrintf("Device subclass: %d\n", deviceDescriptor.bDeviceSubClass);
+//    avr_serialPrintf("Device protocol: %d\n", deviceDescriptor.bDeviceProtocol);
 
     /*
     usb_getString(device, deviceDescriptor.iManufacturer, device->firstStringLanguage, 128, buf);
