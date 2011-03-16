@@ -3,12 +3,8 @@ CC=avr-gcc
 #MCU=atmega168
 MCU=atmega328p
 #MCU=atmega1280
-CFLAGS=-mmcu=${MCU} -Wall -Os -pedantic -std=c99
+CFLAGS=-mmcu=${MCU} -Wall -Os -pedantic -std=c99 #-DSFHACK
 LINKERFLAGS=-mmcu=${MCU}
-
-#CC=gcc
-#CFLAGS=
-#LINKERFLAGS=
 
 MAIN=main
 CFILES=${MAIN}.c avr.c spi.c usb.c max3421e/max3421e.c max3421e/max3421e_usb.c adb.c

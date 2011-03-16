@@ -4,8 +4,8 @@
  * This is a low-level interface that provides access to the internal registers and polls the
  * controller for state changes.
  *
- * This library is based on work from Oleg, but has been ported to C and heavily restructured.
- * Control over the GPIO pins has been stripped.
+ * This library is based on work done by Oleg Masurov, but has been ported to C and heavily
+ * restructured. Control over the GPIO pins has been stripped.
  *
  * Note that the current incarnation of this library only supports the Arduino Mega with a
  * hardware mod to rewire the MISO, MOSI, and CLK SPI pins.
@@ -63,6 +63,31 @@ enum
 #define MAX_RESET(x) { if (x) PORTD |= 0x80; else PORTD &= ~0x80; }
 
 #endif
+
+// Sparkfun botched their first attempt at cloning Oleg's max3421e shield and reversed the GPX and RESET pins.
+// This hack is in place to make MicroBridge work with those shields. (see http://www.sparkfun.com/products/9628)
+// note: I used #undef here to avoid a bunch of ugly nested #ifdefs above
+#ifdef SFHACK
+
+#undef MAX_GPX
+#undef MAX_RESET
+
+#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+
+// Untested!
+#define MAX_GPX() ((PORTH & 0x10) >> 0x10)
+#define MAX_RESET(x) { if (x) PORTH |= 0x20; else PORTH &= ~0x20; }
+
+#elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
+
+// Untested!
+#define MAX_GPX() ((PORTD & 0x80) >> 7)
+#define MAX_RESET(x) { if (x) PORTB |= 1; else PORTB &= ~1; }
+
+#endif
+
+#endif
+
 
 void max3421e_init();
 void max3421e_write(uint8_t reg, uint8_t val);

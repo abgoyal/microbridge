@@ -330,8 +330,8 @@ int usb_getString(usb_device * device, uint8_t index, uint8_t languageId, uint16
  */
 int usb_read(usb_device * device, usb_endpoint * endpoint, uint16_t length, uint8_t * data, unsigned int nakLimit)
 {
-	uint8_t rcode, bytesRead;
-	uint8_t maxPacketSize = endpoint->maxPacketSize;
+	uint16_t rcode, bytesRead;
+	uint16_t maxPacketSize = endpoint->maxPacketSize;
 
 	unsigned int totalTransferred = 0;
 
@@ -349,14 +349,8 @@ int usb_read(usb_device * device, usb_endpoint * endpoint, uint16_t length, uint
 
 		if (rcode)
 		{
-//			if (rcode!=hrNAK)
+//			if (rcode != hrNAK)
 //				avr_serialPrintf("usb_read: dispatch error %d\n", rcode);
-
-			if (rcode==hrTOGERR)
-			{
-				if (endpoint->sendToggle==bmSNDTOG0) endpoint->sendToggle=bmSNDTOG1;
-				if (endpoint->sendToggle==bmSNDTOG1) endpoint->sendToggle=bmSNDTOG0;
-			}
 
 			return -1;
 		}
@@ -364,6 +358,8 @@ int usb_read(usb_device * device, usb_endpoint * endpoint, uint16_t length, uint
 		// Assert that the RCVDAVIRQ bit in register MAX_REG_HIRQ is set.
 		if ((max3421e_read(MAX_REG_HIRQ) & bmRCVDAVIRQ) == 0)
 		{
+//			avr_serialPrintf("usb_read: toggle error? %d\n", rcode);
+
 			// TODO: the absence of RCVDAVIRQ indicates a toggle error. Need to add handling for that.
 			return -2;
 		}

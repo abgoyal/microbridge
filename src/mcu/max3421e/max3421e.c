@@ -35,6 +35,31 @@ void max3421e_init()
 
 #endif
 
+	// Sparkfun botched their first attempt at cloning Oleg's max3421e shield and reversed the GPX and RESET pins.
+	// This hack is in place to make MicroBridge work with those shields. (see http://www.sparkfun.com/products/9628)
+#ifdef SFHACK
+
+#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+
+	// Set MAX_GPX pin to input mode.
+	DDRH &= ~0x10;
+
+	// Set RESET pin to output
+	DDRH |= 0x20;
+
+#elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
+
+	// Set GPX pin to input
+	DDRD &= ~0x80;
+
+	// Set RESET pin to output
+	DDRB |= 0x1;
+
+#endif
+
+#endif
+
+
 	// Pull SPI !SS high
 	MAX_SS(1);
 
