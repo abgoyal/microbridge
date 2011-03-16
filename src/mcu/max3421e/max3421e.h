@@ -51,8 +51,8 @@ enum
 #if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
 
 #define MAX_SS(x) { if (x) PORTB |= 0x10; else PORTB &= ~0x10; }
-#define MAX_INT() ((PORTH & 0x40) >> 0x40)
-#define MAX_GPX() ((PORTH & 0x20) >> 0x20)
+#define MAX_INT() ((PORTH & 0x40) >> 6)
+#define MAX_GPX() ((PORTH & 0x20) >> 5)
 #define MAX_RESET(x) { if (x) PORTH |= 0x10; else PORTH &= ~0x10; }
 
 #elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
@@ -75,7 +75,7 @@ enum
 #if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
 
 // Untested!
-#define MAX_GPX() ((PORTH & 0x10) >> 0x10)
+#define MAX_GPX() ((PORTH & 0x10) >> 4)
 #define MAX_RESET(x) { if (x) PORTH |= 0x20; else PORTH &= ~0x20; }
 
 #elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
