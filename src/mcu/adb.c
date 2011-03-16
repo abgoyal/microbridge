@@ -2,6 +2,8 @@
 
 #include "adb.h"
 
+// #define DEBUG
+
 #define MAX_BUF_SIZE 256
 
 static usb_device * adbDevice;
@@ -89,7 +91,7 @@ adb_connection * adb_addConnection(char * connectionString, boolean reconnect, a
  * Prints an ADB_message, for debugging purposes.
  * @param message ADB message to print.
  */
-/*
+#ifdef DEBUG
 static void adb_printMessage(adb_message * message)
 {
 	switch(message->command)
@@ -101,7 +103,7 @@ static void adb_printMessage(adb_message * message)
 		avr_serialPrintf("CLSE message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
 		break;
 	case A_WRTE:
-		avr_serialPrintf("WRTE message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
+		avr_serialPrintf("WRTE message [%lx] %ld %ld, %ld bytes\n", message->command, message->arg0, message->arg1, message->data_length);
 		break;
 	case A_CNXN:
 		avr_serialPrintf("CNXN message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
@@ -109,12 +111,15 @@ static void adb_printMessage(adb_message * message)
 	case A_SYNC:
 		avr_serialPrintf("SYNC message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
 		break;
+	case A_OPEN:
+		avr_serialPrintf("OPEN message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
+		break;
 	default:
 		avr_serialPrintf("WTF message [%lx] %ld %ld\n", message->command, message->arg0, message->arg1);
 		break;
 	}
 }
-*/
+#endif
 
 /**
  * Writes an empty message (without payload) to the ADB device.
@@ -136,7 +141,9 @@ static int adb_writeEmptyMessage(usb_device * device, uint32_t command, uint32_t
 	message.data_check = 0;
 	message.magic = command ^ 0xffffffff;
 
-//	avr_serialPrint(">>>> "); adb_printMessage(&message);
+#ifdef DEBUG
+	avr_serialPrint("OUT << "); adb_printMessage(&message);
+#endif
 
 	return usb_bulkWrite(device, sizeof(adb_message), (uint8_t*)&message);
 }
@@ -172,7 +179,9 @@ int adb_writeMessage(usb_device * device, uint32_t command, uint32_t arg0, uint3
 	message.data_check = sum;
 	message.magic = command ^ 0xffffffff;
 
-//	avr_serialPrint(">>>> "); adb_printMessage(&message);
+#ifdef DEBUG
+	avr_serialPrint("OUT << "); adb_printMessage(&message);
+#endif
 
 	rcode = usb_bulkWrite(device, sizeof(adb_message), (uint8_t*)&message);
 	if (rcode) return rcode;
@@ -219,8 +228,10 @@ static boolean adb_pollMessage(adb_message * message, boolean poll)
 	// If the message is corrupt, return.
 	if (message->magic != (message->command ^ 0xffffffff))
 	{
-//		avr_serialPrintf("Broken message, magic mismatch, %d bytes\n", bytesRead);
+#ifdef DEBUG
+		avr_serialPrintf("Broken message, magic mismatch, %d bytes\n", bytesRead);
 		return false;
+#endif
 	}
 
 	// Check if the received number of bytes matches our expected 24 bytes of ADB message header.
@@ -325,8 +336,11 @@ static void adb_handleWrite(adb_connection * connection, adb_message * message)
 		// Read payload
 		bytesRead = usb_bulkRead(adbDevice, len, buf, false);
 
-//		if (len != bytesRead)
-//			avr_serialPrintf("bytes read mismatch: %d expected, %d read, %ld left\n", len, bytesRead, bytesLeft);
+		if (len != bytesRead)
+			avr_serialPrintf("bytes read mismatch: %d expected, %d read, %ld left\n", len, bytesRead, bytesLeft);
+
+		// Break out of the read loop if there's no data to read :(
+		if (bytesRead==-1) break;
 
 		connection->dataRead += len;
 		adb_fireEvent(connection, ADB_CONNECTION_RECEIVE, len, buf);
@@ -412,7 +426,9 @@ void adb_poll()
 	if (message.command == A_CNXN)
 		adb_handleConnect(&message);
 
-//	avr_serialPrintf("<<<<", connected); adb_printMessage(&message);
+#ifdef DEBUG
+	avr_serialPrintf("IN >> ", connected); adb_printMessage(&message);
+#endif
 
 	// Handle messages for specific connections
 	for (i=0; i<ADB_MAX_CONNECTIONS; i++)
