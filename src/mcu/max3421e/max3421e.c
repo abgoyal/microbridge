@@ -1,3 +1,34 @@
+/*
+Copyright 2011 Niels Brouwers
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.#include <string.h>
+*/
+
+/**
+ *
+ * Library for the max3421e USB host controller shield produced by circuitsathome and Sparkfun.
+ * This is a low-level interface that provides access to the internal registers and polls the
+ * controller for state changes.
+ *
+ * This library is based on work done by Oleg Masurov, but has been ported to C and heavily
+ * restructured. Control over the GPIO pins has been stripped.
+ *
+ * Note that the current incarnation of this library only supports the Arduino Mega with a
+ * hardware mod to rewire the MISO, MOSI, and CLK SPI pins.
+ *
+ * http://www.circuitsathome.com/
+ */
+
 #include "max3421e.h"
 #include "../spi.h"
 
