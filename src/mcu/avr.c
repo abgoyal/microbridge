@@ -36,8 +36,6 @@ limitations under the License.#include <string.h>
 volatile uint32_t timer0_overflow_count = 0;
 volatile uint32_t timer0_millis = 0;
 static uint8_t timer0_fract = 0;
-
-char flip = 0x00;
 volatile uint16_t timer1_overflow_count = 0x0;
 
 SIGNAL(TIMER0_OVF_vect)
@@ -105,11 +103,6 @@ uint32_t avr_millis()
 
 SIGNAL(TIMER1_OVF_vect)
 {
-	DDRB |= 0xff;
-	PORTB = flip;
-
-	flip = ~flip;
-
 	timer1_overflow_count ++;
 }
 
