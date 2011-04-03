@@ -13,16 +13,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 #include <string.h>
+#include <stdlib.h>
 #include "adb.h"
+
+#include "max3421e/max3421e_usb.h"
 
 // #define DEBUG
 
 #define MAX_BUF_SIZE 256
 
 static usb_device * adbDevice;
-static adb_connection connections[ADB_MAX_CONNECTIONS];
+static adb_connection * firstConnection;
 static boolean connected;
+static int connectionLocalId = 1;
 
 // Event handler callback function.
 adb_eventHandler * eventHandler;
@@ -72,33 +77,36 @@ static void adb_fireEvent(adb_connection * connection, adb_eventType type, uint1
  * @param handler event handler.
  * @return an ADB connection record or NULL on failure (not enough slots or connection string too long).
  */
-adb_connection * adb_addConnection(char * connectionString, boolean reconnect, adb_eventHandler * handler)
+adb_connection * adb_addConnection(const char * connectionString, boolean reconnect, adb_eventHandler * handler)
 {
-	int index;
 
-	// Precondition check (connection string length)
-	if (strlen(connectionString)+1 > ADB_CONNECTSTRING_LENGTH)
+	// Allocate a new ADB connection object
+	adb_connection * connection = (adb_connection*)malloc(sizeof(adb_connection));
+	if (connection == NULL) return NULL;
+
+	// Allocate memory for the connection string
+	connection->connectionString = (char*)strdup(connectionString);
+	if (connection->connectionString==NULL)
+	{
+		// Free the connection object and return null
+		free(connection);
 		return NULL;
+	}
 
-	// Find an empty spot in the connection list.
-	for (index=0; index<ADB_MAX_CONNECTIONS; index++)
-		if (connections[index].status==ADB_UNUSED)
-		{
-			// Copy the connection string to the ADB connection record.
-			snprintf(connections[index].connectionString, ADB_CONNECTSTRING_LENGTH, "%s", connectionString);
+	// Initialise the newly created object.
+	connection->localID = connectionLocalId ++;
+	connection->status = ADB_CLOSED;
+	connection->lastConnectionAttempt = 0;
+	connection->reconnect = reconnect;
+	connection->eventHandler = handler;
 
-			// Initialise the record.
-			connections[index].localID = index + 1; // local id may not be zero
-			connections[index].status = ADB_CLOSED;
-			connections[index].lastConnectionAttempt = 0;
-			connections[index].reconnect = reconnect;
-			connections[index].eventHandler = handler;
-
-			return &connections[index];
-		}
+	// Add the connection to the linked list. Note that it's easier to just insert
+	// at position 0 because you don't have to traverse the list :)
+	connection->next = firstConnection;
+	firstConnection = connection;
 
 	// Unable to find an empty spot, all connection slots in use.
-	return NULL;
+	return connection;
 }
 
 /**
@@ -260,20 +268,20 @@ static boolean adb_pollMessage(adb_message * message, boolean poll)
 static void adb_openClosedConnections()
 {
 	uint32_t timeSinceLastConnect;
-	int i;
+	adb_connection * connection;
 
 	// Iterate over the connection list and send "OPEN" for the ones that are currently closed.
-	for (i=0; i<ADB_MAX_CONNECTIONS; i++)
+	for (connection = firstConnection; connection!=NULL; connection = connection->next)
 	{
-		timeSinceLastConnect = avr_millis() - connections[i].lastConnectionAttempt;
-		if (connections[i].status==ADB_CLOSED && timeSinceLastConnect>ADB_CONNECTION_RETRY_TIME)
+		timeSinceLastConnect = avr_millis() - connection->lastConnectionAttempt;
+		if (connection->status==ADB_CLOSED && timeSinceLastConnect>ADB_CONNECTION_RETRY_TIME)
 		{
 			// Issue open command.
-			adb_writeStringMessage(adbDevice, A_OPEN, connections[i].localID, 0, connections[i].connectionString);
+			adb_writeStringMessage(adbDevice, A_OPEN, connection->localID, 0, connection->connectionString);
 
 			// Record the last attempt time
-			connections[i].lastConnectionAttempt = avr_millis();
-			connections[i].status = ADB_OPENING;
+			connection->lastConnectionAttempt = avr_millis();
+			connection->status = ADB_OPENING;
 
 		}
 	}
@@ -281,7 +289,7 @@ static void adb_openClosedConnections()
 }
 
 /**
- * Handles and ADB OKAY message.
+ * Handles and ADB OKAY message, which represents a transition in the connection state machine. 
  *
  * @param connection ADB connection
  * @param message ADB message struct.
@@ -376,12 +384,12 @@ static void adb_handleWrite(adb_connection * connection, adb_message * message)
  */
 static void adb_closeAll()
 {
-	int i;
+	adb_connection * connection;
 
 	// Iterate over all connections and close the ones that are currently open.
-	for (i=0; i<ADB_MAX_CONNECTIONS; i++)
-		if (!(connections[i].status==ADB_UNUSED || connections[i].status==ADB_CLOSED))
-			adb_handleClose(&connections[i]);
+	for (connection = firstConnection; connection != NULL; connection = connection->next)
+		if (!(connection->status==ADB_UNUSED || connection->status==ADB_CLOSED))
+			adb_handleClose(connection);
 
 }
 
@@ -412,7 +420,7 @@ static void adb_handleConnect(adb_message * message)
  */
 void adb_poll()
 {
-	int i;
+	adb_connection * connection;
 	adb_message message;
 
 	// Poll the USB layer.
@@ -445,20 +453,20 @@ void adb_poll()
 #endif
 
 	// Handle messages for specific connections
-	for (i=0; i<ADB_MAX_CONNECTIONS; i++)
+	for (connection = firstConnection; connection != NULL; connection = connection->next)
 	{
-		if (connections[i].status!=ADB_UNUSED && connections[i].localID==message.arg1)
+		if (connection->status!=ADB_UNUSED && connection->localID==message.arg1)
 		{
 			switch(message.command)
 			{
 			case A_OKAY:
-				adb_handleOkay(&(connections[i]), &message);
+				adb_handleOkay(connection, &message);
 				break;
 			case A_CLSE:
-				adb_handleClose(&(connections[i]));
+				adb_handleClose(connection);
 				break;
 			case A_WRTE:
-				adb_handleWrite(&(connections[i]), &message);
+				adb_handleWrite(connection, &message);
 				break;
 			default:
 				break;
@@ -586,6 +594,7 @@ static void adb_initUsb(usb_device * device, adb_usbConfiguration * handle)
 
 /**
  * Handles events from the USB layer.
+ *
  * @param device USB device that generated the event.
  * @param event USB event.
  */
@@ -626,6 +635,7 @@ static void adb_usbEventHandler(usb_device * device, usb_eventType event)
 
 /**
  * Write a set of bytes to an open ADB connection.
+ * 
  * @param connection ADB connection to write the data to.
  * @param length number of bytes to transmit.
  * @param data data to send.
@@ -651,6 +661,7 @@ int adb_write(adb_connection * connection, uint16_t length, uint8_t * data)
 
 /**
  * Write a string to an open ADB connection. The trailing zero is not transmitted.
+ *
  * @param connection ADB connection to write the data to.
  * @param length number of bytes to transmit.
  * @param data data to send.
@@ -675,8 +686,7 @@ int adb_writeString(adb_connection * connection, char * str)
 }
 
 /**
- * Initialises the ADB protocol. This function initialises the USB layer itsel,
- * so no further setup is required.
+ * Initialises the ADB protocol. This function initialises the USB layer underneath so no further setup is required.
  */
 void adb_init()
 {
@@ -688,3 +698,4 @@ void adb_init()
 	usb_setEventHandler(adb_usbEventHandler);
 	usb_init();
 }
+

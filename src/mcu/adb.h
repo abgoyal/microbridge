@@ -18,8 +18,7 @@ limitations under the License.#include <string.h>
 
 #include <stdint.h>
 #include <stdbool.h>
-
-#include "max3421e/max3421e_usb.h"
+#include "avr.h"
 
 // ADB
 #define MAX_PAYLOAD 4096;
@@ -36,9 +35,6 @@ limitations under the License.#include <string.h>
 #define ADB_PROTOCOL 0x1
 
 #define ADB_USB_PACKETSIZE 0x40
-// #define ADB_USB_PACKETSIZE 512
-#define ADB_CONNECTSTRING_LENGTH 64
-#define ADB_MAX_CONNECTIONS 4
 #define ADB_CONNECTION_RETRY_TIME 1000
 
 typedef struct
@@ -84,7 +80,7 @@ typedef enum
 
 typedef enum
 {
-	ADB_CONNECT,
+	ADB_CONNECT = 0,
 	ADB_DISCONNECT,
 	ADB_CONNECTION_OPEN,
 	ADB_CONNECTION_CLOSE,
@@ -99,20 +95,21 @@ typedef void(adb_eventHandler)(adb_connection * connection, adb_eventType event,
 
 struct _adb_connection
 {
-	char connectionString[ADB_CONNECTSTRING_LENGTH];
+	char * connectionString;
 	uint32_t localID, remoteID;
 	uint32_t lastConnectionAttempt;
 	uint16_t dataSize, dataRead;
 	adb_connectionStatus status;
 	boolean reconnect;
 	adb_eventHandler * eventHandler;
+	adb_connection * next;
 };
 
 void adb_init();
 void adb_poll();
 
 void adb_setEventHandler(adb_eventHandler * handler);
-adb_connection * adb_addConnection(char * connectionString, boolean reconnect, adb_eventHandler * eventHandler);
+adb_connection * adb_addConnection(const char * connectionString, boolean reconnect, adb_eventHandler * eventHandler);
 int adb_write(adb_connection * connection, uint16_t length, uint8_t * data);
 int adb_writeString(adb_connection * connection, char * str);
 

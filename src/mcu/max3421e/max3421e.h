@@ -31,8 +31,8 @@ limitations under the License.#include <string.h>
 #ifndef _MAX3421E_H_
 #define _MAX3421E_H_
 
-#include <stdbool.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "../spi.h"
 #include "max3421e_constants.h"
