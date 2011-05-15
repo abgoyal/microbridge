@@ -29,8 +29,11 @@ limitations under the License.#include <string.h>
  * http://www.circuitsathome.com/
  */
 
+#include "../SPI/SPI.h"
+#include "wiring.h"
 #include "max3421e.h"
-#include "../spi.h"
+#include "HardwareSerial.h"
+
 
 static uint8_t vbusState;
 
@@ -40,8 +43,15 @@ static uint8_t vbusState;
  */
 void max3421e_init()
 {
-	spi_begin();
 
+	SPI.begin();
+
+	pinMode(PIN_MAX_INT, INPUT);
+	pinMode(PIN_MAX_GPX, INPUT);
+	pinMode(PIN_MAX_SS, OUTPUT);
+	pinMode(PIN_MAX_RESET, OUTPUT);
+
+/*
 #if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
 
 	// Set MAX_INT and MAX_GPX pins to input mode.
@@ -65,31 +75,7 @@ void max3421e_init()
 	DDRB |= 0x4;
 
 #endif
-
-	// Sparkfun botched their first attempt at cloning Oleg's max3421e shield and reversed the GPX and RESET pins.
-	// This hack is in place to make MicroBridge work with those shields. (see http://www.sparkfun.com/products/9628)
-#ifdef SFHACK
-
-#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
-
-	// Set MAX_GPX pin to input mode.
-	DDRH &= ~0x10;
-
-	// Set RESET pin to output
-	DDRH |= 0x20;
-
-#elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
-
-	// Set GPX pin to input
-	DDRD &= ~0x80;
-
-	// Set RESET pin to output
-	DDRB |= 0x1;
-
-#endif
-
-#endif
-
+*/
 
 	// Pull SPI !SS high
 	MAX_SS(1);
@@ -112,7 +98,7 @@ boolean max3421e_reset(void)
 	// Remove the reset
 	max3421e_write(MAX_REG_USBCTL, 0x00);
 
-	avr_delay(10);
+	delay(10);
 
 	// Wait until the PLL is stable
 	while (!(max3421e_read(MAX_REG_USBIRQ) & bmOSCOKIRQ))
@@ -137,7 +123,7 @@ void max3421e_powerOn(void)
 
 	// Stop/start the oscillator.
 	if (max3421e_reset() == false)
-		avr_serialPrintf("Error: OSCOKIRQ failed to assert\n");
+		Serial.print("Error: OSCOKIRQ failed to assert\n");
 
 	// Configure host operation.
 	max3421e_write(MAX_REG_MODE, bmDPPULLDN | bmDMPULLDN | bmHOST | bmSEPIRQ ); // set pull-downs, Host, Separate GPIN IRQ on GPX

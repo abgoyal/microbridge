@@ -16,18 +16,7 @@ limitations under the License.#include <string.h>
 #include "avr.h"
 #include "adb.h"
 
-static uint8_t c = 0;
-
-adb_connection * shell;
-
-#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
-ISR(USART0_RX_vect)
-#elif defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__)
-ISR(USART_RX_vect)
-#endif
-{
-	c = UDR0;
-}
+adb_connection * logcat, * connection;
 
 void adbEventHandler(adb_connection * connection, adb_eventType event, uint16_t length, uint8_t * data)
 {
@@ -70,17 +59,42 @@ int main()
 
  	// Initialise USB host shield.
 	adb_init();
-	shell = adb_addConnection("shell:", true, adbEventHandler);
+	logcat = adb_addConnection("shell:exec logcat -s microbridge:*", true, adbEventHandler);
+	connection = adb_addConnection("tcp:4567", true, adbEventHandler);
+
+	// Init ADC
+	uint32_t lastTime = avr_millis();
 
 	while (1)
  	{
 		adb_poll();
 
- 		if (c!=0 && shell->status == ADB_OPEN)
- 		{
- 			adb_write(shell, 1, &c);
- 			c = 0;
- 		}
+		DDRC = 0xff;
+		PORTC |= 1;
+		PORTC |= 0x2;
+		PORTC &= ~0x4;
+
+		if ((avr_millis()-lastTime) > 100)
+		{
+//			// Set VCC as reference, enable left alignment of results, select ADC channel 1
+//			ADMUX = (1<<REFS0) | (1<<ADLAR) | 1;
+//
+//			// Enable ADC
+//			ADCSRA |= (1<<ADEN);
+//
+//			// Start ADC sample
+//			ADCSRA |= (1<<ADSC);
+//			while (ADCSRA&(1<<ADSC));
+//
+//			uint8_t value = ADCH;
+//
+//			avr_serialPrintf("ADC[0]: %d\n", value);
+//
+//			if (connection->status==ADB_OPEN)
+//				adb_write(connection, 1, &value);
+
+			lastTime = avr_millis();
+		}
 
  	}
 
